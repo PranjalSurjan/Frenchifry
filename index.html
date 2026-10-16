@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1b1e" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<title>French notes</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📒</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --desk: #e9eaee;
+  --paper: #ffffff;
+  --rule: #d6dce5;
+  --margin: #f0a3a3;
+  --chrome: #ffffff;
+  --text: #1f2023;
+  --muted: #6b6f78;
+  --hair: #e3e5ea;
+  --toolbar: #222327;
+  --tool-icon: #e6e7ea;
+  --tool-active: #3a3c42;
+  --chip: #f1f2f5;
+  --danger: #c62f2f;
+  --line: 56px;
+  --ink: #e39b12;
+  --hand: 'Kalam', 'Segoe Print', 'Comic Sans MS', cursive;
+  --ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --desk: #121316;
+    --paper: #1f2024;
+    --rule: #34373e;
+    --margin: #7c4040;
+    --chrome: #1a1b1e;
+    --text: #ecedef;
+    --muted: #9a9ea7;
+    --hair: #2c2e33;
+    --toolbar: #2a2b30;
+    --tool-active: #45474e;
+    --chip: #2a2c31;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: var(--ui); color: var(--text); background: var(--desk);
+  -webkit-tap-highlight-color: transparent;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 6px; }
+svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+#app { display: flex; flex-direction: column; height: 100%; }
+
+/* ---------- app bar (Samsung Notes style: back arrow + big title) ---------- */
+.appbar {
+  display: flex; align-items: center; gap: 4px; min-height: 64px; padding: 0 12px 0 8px;
+  background: var(--chrome); border-bottom: 1px solid var(--hair); flex: none;
+}
+.appbar h1, .appbar .title-input {
+  font-size: 1.45rem; font-weight: 700; margin: 0 0 0 6px; flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em;
+}
+.icon-btn { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; flex: none; }
+.icon-btn:active { background: var(--chip); }
+.status { font-size: .8rem; color: var(--muted); display: flex; align-items: center; gap: 6px; padding: 0 8px; white-space: nowrap; }
+.status i { width: 8px; height: 8px; border-radius: 50%; background: #3ba55c; display: inline-block; }
+.status.saving i { background: #e3a008; }
+.status.local i { background: var(--muted); }
+.status.error i { background: var(--danger); }
+
+/* ---------- dark toolbar ---------- */
+.toolbar {
+  display: flex; align-items: center; gap: 2px; padding: 6px 10px; background: var(--toolbar);
+  color: var(--tool-icon); overflow-x: auto; flex: none; scrollbar-width: none;
+}
+.toolbar::-webkit-scrollbar { display: none; }
+.tool { min-width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; padding: 0 8px; flex: none; font-size: .85rem; font-weight: 600; }
+.tool[aria-pressed="true"] { background: var(--tool-active); }
+.tool:disabled { opacity: .35; }
+.sep { width: 1px; height: 26px; background: #55575e; margin: 0 8px; flex: none; }
+.swatch { width: 32px; height: 32px; border-radius: 50%; margin: 0 4px; flex: none; border: 3px solid transparent; }
+.swatch[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 2px var(--toolbar) inset; }
+.readonly-note { font-size: .85rem; padding: 0 10px; opacity: .8; white-space: nowrap; }
+
+/* ---------- desk + paper ---------- */
+.desk { flex: 1; overflow-y: auto; padding: 24px 16px 40px; -webkit-overflow-scrolling: touch; }
+.paper {
+  position: relative; max-width: 1180px; margin: 0 auto; min-height: calc(100% - 8px);
+  background-color: var(--paper);
+  background-image: linear-gradient(to bottom, transparent calc(var(--line) - 1px), var(--rule) calc(var(--line) - 1px));
+  background-size: 100% var(--line);
+  background-position: 0 24px;
+  padding: 24px 28px calc(var(--line) * 3) 96px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 6px 24px rgba(0,0,0,.05);
+}
+.paper::before { /* double red margin, like a real notebook */
+  content: ''; position: absolute; top: 0; bottom: 0; left: 64px; width: 5px;
+  border-left: 1.5px solid var(--margin); border-right: 1.5px solid var(--margin);
+}
+.page-head { height: calc(var(--line) * 2); display: flex; align-items: flex-end; gap: 24px; padding-bottom: 10px; position: relative; }
+.page-head::after { content: ''; position: absolute; left: -24px; right: 0; bottom: 4px; height: 2px; background: var(--ink); opacity: .55; border-radius: 2px; }
+.page-title {
+  font-family: var(--hand); font-size: 2rem; color: var(--ink); border: 0; background: transparent; padding: 0;
+  flex: 1; min-width: 0; line-height: 1.1;
+}
+.page-title::placeholder { color: var(--ink); opacity: .35; }
+.page-date { font-family: var(--hand); font-size: 1.5rem; color: var(--ink); white-space: nowrap; }
+
+.row {
+  height: var(--line); display: grid; align-items: end; column-gap: 14px; padding-bottom: 7px;
+  grid-template-columns: minmax(0, 1.1fr) 26px minmax(0, 1.2fr) minmax(0, 1fr) 44px 36px;
+}
+.row.readonly { grid-template-columns: minmax(0, 1.1fr) 26px minmax(0, 1.2fr) minmax(0, 1fr) 44px; }
+.cell { font-family: var(--hand); font-size: 1.55rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--c, var(--ink)); }
+.cell.arrow { font-size: 1.35rem; text-align: center; }
+.cell.fr { cursor: text; }
+.cell.sound { font-size: 1.3rem; cursor: pointer; }
+.cell.sound.pending { opacity: .45; }
+.cell.sound .guess { font-family: var(--ui); font-size: .75rem; vertical-align: super; opacity: .7; margin-right: 2px; }
+.cell input {
+  width: 100%; border: 0; background: transparent; font: inherit; color: inherit; padding: 0;
+}
+.cell input::placeholder { color: var(--c, var(--ink)); opacity: .3; }
+.speak, .more { width: 44px; height: 40px; display: grid; place-items: center; border-radius: 10px; color: var(--muted); align-self: center; margin-top: 8px; }
+.speak:active, .more:active { background: var(--chip); }
+.speak.playing { color: var(--c, var(--ink)); }
+.ipa { display: none; }
+.covered .cell.en:not(.revealed) { filter: blur(7px); cursor: pointer; user-select: none; }
+.page-count { position: absolute; right: 24px; bottom: 16px; font-size: .9rem; color: var(--muted); }
+.empty-lines { height: calc(var(--line) * 2); display: flex; align-items: flex-end; padding-bottom: 10px; color: var(--muted); font-size: .95rem; }
+
+/* ---------- writing pad dock ---------- */
+.dock { flex: none; background: var(--chrome); border-top: 1px solid var(--hair); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.dock[hidden] { display: none; }
+.cands { display: flex; gap: 8px; padding: 8px 12px; overflow-x: auto; min-height: 56px; align-items: center; scrollbar-width: none; }
+.cand { font-family: var(--hand); font-size: 1.35rem; padding: 4px 16px; border-radius: 20px; background: var(--chip); white-space: nowrap; flex: none; }
+.cand.top { background: var(--ink); color: #fff; }
+.cands .hint { color: var(--muted); font-size: .9rem; }
+.pad-wrap { display: flex; gap: 10px; padding: 0 12px 12px; }
+.pad {
+  position: relative; flex: 1; height: 150px; border-radius: 14px; overflow: hidden;
+  background: var(--paper);
+  background-image: linear-gradient(to bottom, transparent 99px, var(--rule) 99px, var(--rule) 101px, transparent 101px);
+  border: 1px solid var(--hair);
+}
+.pad canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+.pad .ph { position: absolute; left: 18px; top: 14px; font-size: .95rem; color: var(--muted); pointer-events: none; }
+.pad-actions { display: flex; flex-direction: column; gap: 8px; width: 112px; }
+.btn { height: 48px; border-radius: 12px; background: var(--chip); font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.btn.primary { background: var(--ink); color: #fff; flex: 1; }
+.btn.danger { color: var(--danger); }
+.type-wrap { display: flex; gap: 10px; padding: 12px; }
+.type-wrap input {
+  flex: 1; height: 56px; border-radius: 12px; border: 1px solid var(--hair); background: var(--paper);
+  font-family: var(--hand); font-size: 1.5rem; padding: 0 16px; color: var(--ink);
+}
+
+/* ---------- home ---------- */
+.home-top { background: var(--chrome); padding: 4px 16px 14px; border-bottom: 1px solid var(--hair); flex: none; }
+.tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.tab { height: 42px; padding: 0 18px; border-radius: 21px; background: var(--chip); font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.tab[aria-selected="true"] { background: var(--text); color: var(--chrome); }
+.tab .dot { width: 10px; height: 10px; border-radius: 50%; }
+.tab small { font-weight: 400; opacity: .7; }
+.search { width: 100%; height: 46px; border-radius: 23px; border: 0; background: var(--chip); padding: 0 18px; font-size: 1rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 22px; max-width: 1180px; margin: 0 auto; }
+.card { text-align: left; display: block; width: 100%; }
+.thumb {
+  aspect-ratio: 3 / 4; border-radius: 10px; position: relative; overflow: hidden; padding: 16px 12px 0 30px;
+  background-color: var(--paper);
+  background-image: linear-gradient(to bottom, transparent 23px, var(--rule) 23px);
+  background-size: 100% 24px; background-position: 0 14px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 4px 14px rgba(0,0,0,.05);
+}
+.thumb::before { content: ''; position: absolute; top: 0; bottom: 0; left: 20px; width: 3px; border-left: 1px solid var(--margin); border-right: 1px solid var(--margin); }
+.thumb b { display: block; font-family: var(--hand); font-size: 1.15rem; line-height: 24px; color: var(--c); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thumb span { display: block; font-family: var(--hand); font-size: .95rem; line-height: 24px; color: var(--c); opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-meta { padding: 8px 2px 0; }
+.card-meta strong { display: block; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-meta small { color: var(--muted); font-size: .82rem; }
+.empty { max-width: 420px; margin: 12vh auto 0; text-align: center; color: var(--muted); line-height: 1.5; }
+.empty b { display: block; color: var(--text); font-size: 1.15rem; margin-bottom: 4px; }
+.fab {
+  position: fixed; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  width: 64px; height: 64px; border-radius: 50%; background: var(--ink); color: #fff;
+  display: grid; place-items: center; box-shadow: 0 6px 20px rgba(0,0,0,.22);
+}
+.fab svg { width: 28px; height: 28px; }
+
+/* ---------- popover, modal, toast ---------- */
+.pop { position: fixed; z-index: 30; background: var(--chrome); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.2); padding: 6px; min-width: 210px; border: 1px solid var(--hair); }
+.pop button { display: block; width: 100%; text-align: left; padding: 12px 14px; border-radius: 10px; }
+.pop button:active { background: var(--chip); }
+.pop .danger { color: var(--danger); }
+.scrim { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.35); display: grid; place-items: center; padding: 20px; }
+.modal { background: var(--chrome); border-radius: 22px; width: min(520px, 100%); max-height: 90vh; overflow-y: auto; padding: 24px; }
+.modal h2 { margin: 0 0 6px; font-size: 1.3rem; }
+.modal p { margin: 0 0 16px; color: var(--muted); line-height: 1.45; }
+.field { margin-bottom: 18px; }
+.field > label, .field > .lbl { display: block; font-size: .9rem; font-weight: 600; margin-bottom: 8px; }
+.seg { display: flex; background: var(--chip); border-radius: 12px; padding: 4px; gap: 4px; }
+.seg button { flex: 1; height: 42px; border-radius: 9px; font-weight: 600; }
+.seg button[aria-pressed="true"] { background: var(--chrome); box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+.text { width: 100%; height: 46px; border-radius: 12px; border: 1px solid var(--hair); background: var(--paper); padding: 0 14px; font-size: 1rem; }
+.person-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.person-row .text { flex: 1; }
+.colors { display: flex; gap: 6px; }
+.colors button { width: 30px; height: 30px; border-radius: 50%; border: 3px solid transparent; }
+.colors button[aria-pressed="true"] { border-color: var(--text); }
+.modal .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
+.modal .actions .btn { padding: 0 22px; }
+.who { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+.who button { height: 96px; border-radius: 16px; background: var(--chip); font-family: var(--hand); font-size: 1.6rem; color: var(--c); border: 3px solid transparent; }
+.who button[aria-pressed="true"] { border-color: var(--c); }
+.note { font-size: .88rem; color: var(--muted); background: var(--chip); border-radius: 12px; padding: 12px 14px; line-height: 1.45; }
+.toast {
+  position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  z-index: 50; background: #2b2c30; color: #fff; border-radius: 14px; padding: 12px 16px;
+  display: flex; gap: 16px; align-items: center; max-width: calc(100% - 32px); box-shadow: 0 8px 24px rgba(0,0,0,.25);
+}
+.toast button { color: #ffd27a; font-weight: 700; }
+
+@media (max-width: 720px) {
+  :root { --line: 48px; }
+  .paper { padding-left: 64px; padding-right: 14px; }
+  .paper::before { left: 40px; }
+  .row { height: calc(var(--line) * 2); grid-template-columns: minmax(0,1fr) 20px minmax(0,1fr) 40px 32px; grid-template-rows: 1fr 1fr; }
+  .row.readonly { grid-template-columns: minmax(0,1fr) 20px minmax(0,1fr) 40px; }
+  .row .sound { grid-column: 1 / 4; grid-row: 2; }
+  .cell { font-size: 1.3rem; }
+  .page-title { font-size: 1.6rem; }
+  .page-date { font-size: 1.1rem; }
+  .pad-actions { width: 88px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .row.new { animation: ink-in .35s ease-out; }
+  @keyframes ink-in { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="pron.js"></script>
+<script>
+'use strict';
+
+// ======================================================================
+// Icons
+// ======================================================================
+const I = {
+  back: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
+  pen: '<svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4z"/><path d="M14 6l3 3"/></svg>',
+  keyboard: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>',
+  undo: '<svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 010 12"/></svg>',
+  clear: '<svg viewBox="0 0 24 24"><path d="M7 21h10M5 15l7-11 7 11-4 3H9z"/></svg>',
+  eye: '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>',
+  stop: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+  speaker: '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12"/></svg>',
+  more: '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="19" r="1.3" fill="currentColor"/></svg>',
+  gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
+  plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+};
+
+// ======================================================================
+// Settings & helpers
+// ======================================================================
+const INKS = ['#e39b12', '#2f6fe4', '#e0559a', '#8b5cf6', '#159a6b', '#d9480f'];
+const DEFAULT_PROFILES = [
+  { id: 'p1', name: 'Pranjal', color: '#e39b12' },
+  { id: 'p2', name: 'Friend', color: '#2f6fe4' },
+];
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem('fn:' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('fn:' + k, JSON.stringify(v)); } catch (e) { } },
+};
+const prefs = Object.assign({ order: 'en-fr', accent: 'fr-FR', slow: false }, LS.get('prefs', {}));
+const savePrefs = () => LS.set('prefs', prefs);
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/[^\w-]/g, '');
+const fmtDate = t => new Date(t).toLocaleDateString('en-CA', { month: 'long', day: 'numeric', year: 'numeric' });
+const $ = (s, el = document) => el.querySelector(s);
+
+// ======================================================================
+// Storage: Vercel API (synced) or this device only
+// ======================================================================
+const Store = {
+  mode: 'local', auth: false, passcode: LS.get('pass', ''), pending: 0, failed: [],
+  async init() {
+    try {
+      const r = await fetch('/api/data?action=ping', { cache: 'no-store' });
+      if (r.ok) { const j = await r.json(); if (j.ok) { this.mode = 'remote'; this.auth = j.auth; return; } }
+    } catch (e) { }
+    this.mode = 'local';
+  },
+  local() { return LS.get('local', { profiles: null, p1: {}, p2: {} }); },
+  async call(method, query, body) {
+    const r = await fetch('/api/data?' + new URLSearchParams(query), {
+      method, cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'x-passcode': this.passcode },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (r.status === 401) { const e = new Error('passcode'); e.code = 401; throw e; }
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Request failed');
+    return r.json();
+  },
+  async loadProfiles() {
+    if (this.mode === 'local') return this.local().profiles || DEFAULT_PROFILES;
+    const j = await this.call('GET', { action: 'profiles' });
+    return j.profiles || DEFAULT_PROFILES;
+  },
+  async saveProfiles(p) {
+    if (this.mode === 'local') { const d = this.local(); d.profiles = p; LS.set('local', d); return; }
+    await this.write(() => this.call('POST', { action: 'profiles' }, { action: 'profiles', profiles: p }));
+  },
+  async loadPerson(pid) {
+    const items = this.mode === 'local' ? (this.local()[pid] || {}) : (await this.call('GET', { action: 'all', person: pid })).items;
+    const out = { pages: {}, entries: {} };
+    for (const [f, v] of Object.entries(items)) {
+      try {
+        const o = JSON.parse(v);
+        if (f.startsWith('page:')) out.pages[o.id] = o; else if (f.startsWith('entry:')) out.entries[o.id] = o;
+      } catch (e) { }
+    }
+    return out;
+  },
+  async put(pid, kind, item) {
+    const field = kind + ':' + item.id;
+    if (this.mode === 'local') { const d = this.local(); d[pid] = d[pid] || {}; d[pid][field] = JSON.stringify(item); LS.set('local', d); return; }
+    await this.write(() => this.call('POST', { action: 'put' }, { action: 'put', person: pid, field, value: item }));
+  },
+  async del(pid, fields) {
+    if (this.mode === 'local') { const d = this.local(); fields.forEach(f => delete (d[pid] || {})[f]); LS.set('local', d); return; }
+    await this.write(() => this.call('POST', { action: 'del' }, { action: 'del', person: pid, fields }));
+  },
+  async write(fn) {
+    this.pending++; setStatus();
+    try { await fn(); }
+    catch (e) {
+      if (e.code === 401) askPasscode();
+      this.failed.push(fn);
+      toast('Couldn’t save. It will retry when you’re back online.');
+    } finally { this.pending--; setStatus(); }
+  },
+  async retry() {
+    const list = this.failed.splice(0);
+    for (const fn of list) await this.write(fn);
+  },
+};
+
+// ======================================================================
+// App state
+// ======================================================================
+const S = {
+  profiles: DEFAULT_PROFILES,
+  me: LS.get('me', null),
+  tab: null,
+  data: { p1: { pages: {}, entries: {} }, p2: { pages: {}, entries: {} } },
+  route: { view: 'home' },
+  ink: null,
+  inputMode: LS.get('inputMode', 'pen'),
+  padOpen: true,
+  covered: false,
+  query: '',
+  justAdded: null,
+};
+const prof = pid => S.profiles.find(p => p.id === pid) || DEFAULT_PROFILES[0];
+const myInk = () => LS.get('ink', null) || prof(S.me || 'p1').color;
+const pagesOf = pid => Object.values(S.data[pid].pages).sort((a, b) => b.created - a.created);
+const entriesOf = (pid, pageId) => Object.values(S.data[pid].entries).filter(e => e.pageId === pageId).sort((a, b) => a.created - b.created);
+
+function setStatus() {
+  const el = $('.status'); if (!el) return;
+  let cls = '', txt = 'Synced';
+  if (Store.mode === 'local') { cls = 'local'; txt = 'This device only'; }
+  else if (Store.pending) { cls = 'saving'; txt = 'Saving…'; }
+  else if (Store.failed.length) { cls = 'error'; txt = 'Not saved'; }
+  el.className = 'status ' + cls; el.innerHTML = `<i></i>${txt}`;
+}
+
+// ======================================================================
+// Speech (built-in French voice)
+// ======================================================================
+const Voice = {
+  voices: [],
+  load() { this.voices = speechSynthesis.getVoices(); },
+  pick() {
+    const v = this.voices;
+    return v.find(x => x.lang.replace('_', '-') === prefs.accent) || v.find(x => x.lang.toLowerCase().startsWith('fr')) || null;
+  },
+  speak(text, onend) {
+    if (!('speechSynthesis' in window)) { toast('This browser can’t speak. Open the page in Chrome.'); return; }
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = this.pick();
+    if (!v && this.voices.length) toast('No French voice found. Install one in Android Settings › Text-to-speech.');
+    if (v) u.voice = v;
+    u.lang = v ? v.lang : prefs.accent;
+    u.rate = prefs.slow ? 0.6 : 0.9;
+    if (onend) { u.onend = onend; u.onerror = onend; }
+    speechSynthesis.speak(u);
+  },
+};
+if ('speechSynthesis' in window) { Voice.load(); speechSynthesis.onvoiceschanged = () => Voice.load(); }
+
+let playing = null;
+function playPage(pid, pageId) {
+  if (playing) { playing.stop = true; speechSynthesis.cancel(); playing = null; renderToolbarOnly(); return; }
+  const list = entriesOf(pid, pageId).filter(e => e.fr);
+  if (!list.length) return;
+  playing = { stop: false, i: 0 };
+  const run = () => {
+    if (!playing || playing.stop) return;
+    if (playing.i >= list.length) { playing = null; markPlaying(null); renderToolbarOnly(); return; }
+    const e = list[playing.i++];
+    markPlaying(e.id);
+    Voice.speak(e.fr, () => setTimeout(run, 700));
+  };
+  renderToolbarOnly(); run();
+}
+function markPlaying(id) {
+  document.querySelectorAll('.speak.playing').forEach(b => b.classList.remove('playing'));
+  if (id) { const b = document.querySelector(`.row[data-id="${id}"] .speak`); if (b) { b.classList.add('playing'); b.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }
+}
+
+// ======================================================================
+// Handwriting pad (S Pen)
+// ======================================================================
+const Pad = {
+  strokes: [], cur: null, penSeen: false, timer: null, t0: 0, cands: [], canvas: null, ctx: null, busy: 0,
+  mount(canvas) {
+    this.canvas = canvas; this.ctx = canvas.getContext('2d');
+    const fit = () => {
+      const r = canvas.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+      canvas.width = Math.round(r.width * d); canvas.height = Math.round(r.height * d);
+      this.ctx.setTransform(d, 0, 0, d, 0, 0); this.redraw();
+    };
+    new ResizeObserver(fit).observe(canvas); fit();
+    canvas.addEventListener('pointerdown', e => this.down(e));
+    canvas.addEventListener('pointermove', e => this.move(e));
+    canvas.addEventListener('pointerup', e => this.up(e));
+    canvas.addEventListener('pointercancel', e => this.up(e));
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+  },
+  point(ev) {
+    const r = this.canvas.getBoundingClientRect();
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top, t: Math.round(ev.timeStamp - this.t0), p: ev.pressure || 0.5 };
+  },
+  down(e) {
+    if (e.pointerType === 'pen') this.penSeen = true;
+    if (e.pointerType === 'touch' && this.penSeen) return; // palm rejection once the S Pen is used
+    e.preventDefault();
+    this.canvas.setPointerCapture(e.pointerId);
+    clearTimeout(this.timer);
+    if (!this.strokes.length) this.t0 = e.timeStamp;
+    const p = this.point(e);
+    this.cur = { x: [p.x], y: [p.y], t: [p.t], p: [p.p] };
+    this.strokes.push(this.cur);
+    this.dot(p);
+    $('.pad .ph')?.remove();
+  },
+  move(e) {
+    if (!this.cur) return;
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of evs) {
+      const p = this.point(ev), s = this.cur, n = s.x.length - 1;
+      this.seg(s.x[n], s.y[n], p.x, p.y, p.p);
+      s.x.push(p.x); s.y.push(p.y); s.t.push(p.t); s.p.push(p.p);
+    }
+  },
+  up() {
+    if (!this.cur) return;
+    this.cur = null;
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.recognize(), 600);
+  },
+  width: p => 1.6 + p * 3.2,
+  seg(x1, y1, x2, y2, p) {
+    const c = this.ctx; c.strokeStyle = S.ink; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.lineWidth = this.width(p); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+  },
+  dot(p) { const c = this.ctx; c.fillStyle = S.ink; c.beginPath(); c.arc(p.x, p.y, this.width(p.p) / 2, 0, Math.PI * 2); c.fill(); },
+  redraw() {
+    if (!this.ctx) return;
+    const r = this.canvas.getBoundingClientRect();
+    this.ctx.clearRect(0, 0, r.width, r.height);
+    for (const s of this.strokes) { this.dot({ x: s.x[0], y: s.y[0], p: s.p[0] }); for (let i = 1; i < s.x.length; i++) this.seg(s.x[i - 1], s.y[i - 1], s.x[i], s.y[i], s.p[i]); }
+  },
+  undo() { this.strokes.pop(); this.redraw(); this.strokes.length ? this.recognize() : this.setCands([]); },
+  clear() { this.strokes = []; this.redraw(); this.setCands([]); },
+  setCands(c) { this.cands = c; renderCands(); },
+  async recognize() {
+    if (!this.strokes.length) return this.setCands([]);
+    const r = this.canvas.getBoundingClientRect();
+    const body = {
+      options: 'enable_pre_space',
+      requests: [{ writing_guide: { writing_area_width: Math.round(r.width), writing_area_height: Math.round(r.height) },
+        ink: this.strokes.map(s => [s.x.map(Math.round), s.y.map(Math.round), s.t]), language: 'fr' }],
+    };
+    const ticket = ++this.busy;
+    let data = null;
+    for (const url of ['/api/handwriting', 'https://inputtools.google.com/request?ime=handwriting&app=mobilesearch&cs=1&oe=UTF-8']) {
+      try {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (res.ok) { data = await res.json(); if (data && data[0] === 'SUCCESS') break; }
+      } catch (e) { }
+      data = null;
+    }
+    if (ticket !== this.busy) return; // a newer stroke started a newer request
+    if (!data) { this.setCands([]); renderCands('Couldn’t read the handwriting. Check your connection, or switch to the keyboard.'); return; }
+    const list = (data[1] && data[1][0] && data[1][0][1]) || [];
+    this.setCands([...new Set(list.map(s => s.trim()).filter(Boolean))].slice(0, 8));
+  },
+};
+
+function renderCands(msg) {
+  const box = $('.cands'); if (!box) return;
+  if (msg) { box.innerHTML = `<span class="hint">${esc(msg)}</span>`; return; }
+  if (!Pad.cands.length) {
+    box.innerHTML = `<span class="hint">${Pad.strokes.length ? 'Reading…' : 'Write a French word or phrase below. Tap a suggestion to add it as a line.'}</span>`;
+    return;
+  }
+  box.innerHTML = Pad.cands.map((c, i) => `<button class="cand${i ? '' : ' top'}" data-cand="${esc(c)}">${esc(c)}</button>`).join('');
+}
+
+// ======================================================================
+// Entries
+// ======================================================================
+async function addEntry(pageId, fr) {
+  fr = fr.trim(); if (!fr) return;
+  const pid = S.me;
+  const e = { id: uid(), pageId, fr, en: '', ipa: '', sound: '', guessed: false, color: S.ink, created: Date.now() };
+  S.data[pid].entries[e.id] = e;
+  S.justAdded = e.id;
+  touchPage(pid, pageId);
+  renderPageBody();
+  scrollToEnd();
+  Store.put(pid, 'entry', e);
+  await fillSound(e);
+}
+async function fillSound(e, force) {
+  if (e.sound && !force) return;
+  try {
+    const r = await Pron.pronounce(e.fr);
+    Object.assign(e, { ipa: r.ipa, sound: r.sound, guessed: r.guessed });
+  } catch (err) { e.sound = ''; }
+  S.data[S.me].entries[e.id] = e;
+  updateRow(e);
+  Store.put(S.me, 'entry', e);
+}
+function touchPage(pid, pageId) {
+  const p = S.data[pid].pages[pageId]; if (!p) return;
+  p.updated = Date.now(); Store.put(pid, 'page', p);
+}
+let lastDeleted = null;
+function deleteEntry(id) {
+  const pid = S.me, e = S.data[pid].entries[id]; if (!e) return;
+  delete S.data[pid].entries[id];
+  Store.del(pid, ['entry:' + id]);
+  lastDeleted = e;
+  renderPageBody();
+  toast('Line deleted', 'Undo', () => {
+    if (!lastDeleted) return;
+    S.data[pid].entries[lastDeleted.id] = lastDeleted; Store.put(pid, 'entry', lastDeleted); lastDeleted = null; renderPageBody();
+  });
+}
+
+// ======================================================================
+// Rendering
+// ======================================================================
+const app = $('#app');
+
+function go(hash) { location.hash = hash; }
+function parseRoute() {
+  const m = location.hash.match(/^#\/(p1|p2)\/([\w-]+)$/);
+  if (m) return { view: 'page', pid: m[1], pageId: m[2] };
+  const t = location.hash.match(/^#\/(p1|p2)$/);
+  return { view: 'home', tab: t ? t[1] : null };
+}
+
+function render() {
+  S.route = parseRoute();
+  if (S.route.view === 'page') {
+    if (!S.data[S.route.pid].pages[S.route.pageId]) { go('#/' + S.route.pid); return; }
+    renderPage();
+  } else {
+    if (S.route.tab) S.tab = S.route.tab;
+    renderHome();
+  }
+  setStatus();
+}
+
+// ---------- home ----------
+function renderHome() {
+  const pid = S.tab || S.me || 'p1', mine = pid === S.me;
+  const p = prof(pid);
+  document.documentElement.style.setProperty('--ink', p.color);
+  const q = S.query.trim().toLowerCase();
+  const pages = pagesOf(pid).filter(pg => !q || (pg.title || '').toLowerCase().includes(q) ||
+    entriesOf(pid, pg.id).some(e => (e.fr + ' ' + e.en).toLowerCase().includes(q)));
+
+  app.innerHTML = `
+    <header class="appbar">
+      <h1>French notes</h1>
+      <span class="status"></span>
+      <button class="icon-btn" data-act="settings" aria-label="Settings">${I.gear}</button>
+    </header>
+    <div class="home-top">
+      <div class="tabs" role="tablist">
+        ${S.profiles.map(x => `<button class="tab" role="tab" aria-selected="${x.id === pid}" data-tab="${x.id}">
+          <span class="dot" style="background:${x.color}"></span>${esc(x.name)}${x.id === S.me ? ' <small>(you)</small>' : ''}</button>`).join('')}
+      </div>
+      <input class="search" type="search" placeholder="Search pages and words" value="${esc(S.query)}" aria-label="Search">
+    </div>
+    <main class="desk">
+      ${pages.length ? `<div class="grid">${pages.map(pg => {
+        const es = entriesOf(pid, pg.id);
+        return `<button class="card" data-open="${pg.id}" style="--c:${p.color}">
+          <div class="thumb"><b>${esc(pg.title || 'Untitled')}</b>${es.slice(0, 7).map(e => `<span style="color:${e.color || p.color}">${esc(e.fr)}</span>`).join('')}</div>
+          <div class="card-meta"><strong>${esc(pg.title || 'Untitled')}</strong><small>${fmtDate(pg.created)} · ${es.length} ${es.length === 1 ? 'line' : 'lines'}</small></div>
+        </button>`;
+      }).join('')}</div>` : `<div class="empty">${q ? `<b>Nothing matches “${esc(S.query)}”</b>Try a different word.` :
+        mine ? '<b>No pages yet</b>Tap the pen button to start your first page.' : `<b>${esc(p.name)} hasn’t written anything yet</b>Their pages will show up here as they write.`}</div>`}
+    </main>
+    ${mine ? `<button class="fab" data-act="newpage" aria-label="New page">${I.pen}</button>` : ''}
+  `;
+  const s = $('.search');
+  s.addEventListener('input', () => { S.query = s.value; const pos = s.selectionStart; renderHome(); setStatus(); const n = $('.search'); n.focus(); n.setSelectionRange(pos, pos); });
+}
+
+// ---------- page ----------
+function renderPage() {
+  const { pid, pageId } = S.route, mine = pid === S.me, p = prof(pid), page = S.data[pid].pages[pageId];
+  S.ink = myInk();
+  document.documentElement.style.setProperty('--ink', mine ? S.ink : p.color);
+  app.innerHTML = `
+    <header class="appbar">
+      <button class="icon-btn" data-act="home" aria-label="Back to all pages">${I.back}</button>
+      <h1>${esc(page.title || 'Untitled')}${mine ? '' : ` <small style="font-weight:400;color:var(--muted);font-size:1rem">· ${esc(p.name)}</small>`}</h1>
+      <span class="status"></span>
+      <button class="icon-btn" data-act="pagemenu" aria-label="Page options">${I.more}</button>
+    </header>
+    <nav class="toolbar" aria-label="Tools"></nav>
+    <main class="desk"><div class="paper ${S.covered ? 'covered' : ''}"></div></main>
+    ${mine ? `<section class="dock" ${S.padOpen ? '' : 'hidden'}></section>` : ''}
+  `;
+  renderToolbarOnly();
+  renderPageBody();
+  if (mine) renderDock();
+}
+
+function renderToolbarOnly() {
+  const bar = $('.toolbar'); if (!bar) return;
+  const { pid, pageId } = S.route, mine = pid === S.me;
+  const swatches = [...new Set([prof(S.me).color, ...INKS])].slice(0, 5);
+  bar.innerHTML = `
+    ${mine ? `
+      <button class="tool" aria-pressed="${S.padOpen && S.inputMode === 'pen'}" data-act="mode-pen" aria-label="Write with S Pen">${I.pen}</button>
+      <button class="tool" aria-pressed="${S.padOpen && S.inputMode === 'keys'}" data-act="mode-keys" aria-label="Type">${I.keyboard}</button>
+      <span class="sep"></span>
+      ${swatches.map(c => `<button class="swatch" style="background:${c}" aria-pressed="${c === S.ink}" data-ink="${c}" aria-label="Ink colour"></button>`).join('')}
+      <span class="sep"></span>
+      <button class="tool" data-act="undo" aria-label="Undo last stroke">${I.undo}</button>
+      <button class="tool" data-act="clear" aria-label="Clear writing">${I.clear}</button>
+      <span class="sep"></span>` : `<span class="readonly-note">Read only</span><span class="sep"></span>`}
+    <button class="tool" aria-pressed="${S.covered}" data-act="cover" aria-label="Hide English to test yourself">${I.eye}</button>
+    <button class="tool" data-act="playall" aria-label="${playing ? 'Stop' : 'Play every line'}">${playing ? I.stop : I.play}</button>
+    <button class="tool" aria-pressed="${prefs.slow}" data-act="slow" aria-label="Slow speech">0.6×</button>
+    <button class="tool" data-act="accent" aria-label="Switch accent">${prefs.accent === 'fr-CA' ? 'CA' : 'FR'}</button>
+  `;
+}
+
+function rowHTML(e, mine) {
+  const c = e.color || prof(S.route.pid).color;
+  const fr = `<div class="cell fr" ${mine ? 'data-edit-fr' : ''} lang="fr">${esc(e.fr)}</div>`;
+  const en = mine
+    ? `<div class="cell en"><input value="${esc(e.en)}" placeholder="meaning" data-en aria-label="English meaning" autocomplete="off" spellcheck="false"></div>`
+    : `<div class="cell en">${esc(e.en) || '<span style="opacity:.3">—</span>'}</div>`;
+  const sound = `<div class="cell sound ${e.sound ? '' : 'pending'}" data-speak title="${esc(e.ipa)}">${e.sound ? `${e.guessed ? '<span class="guess" title="Guessed from spelling">≈</span>' : ''}${esc(e.sound)}` : 'looking up…'}</div>`;
+  const pair = prefs.order === 'en-fr' ? en + '<div class="cell arrow">→</div>' + fr : fr + '<div class="cell arrow">→</div>' + en;
+  return `<div class="row ${mine ? '' : 'readonly'} ${S.justAdded === e.id ? 'new' : ''}" data-id="${e.id}" style="--c:${c}">
+    ${pair}${sound}
+    <button class="speak" data-speak aria-label="Say it">${I.speaker}</button>
+    ${mine ? `<button class="more" data-rowmenu aria-label="Line options">${I.more}</button>` : ''}
+  </div>`;
+}
+
+function renderPageBody() {
+  const paper = $('.paper'); if (!paper) return;
+  const { pid, pageId } = S.route, mine = pid === S.me, page = S.data[pid].pages[pageId];
+  const es = entriesOf(pid, pageId);
+  paper.innerHTML = `
+    <div class="page-head">
+      ${mine ? `<input class="page-title" value="${esc(page.title)}" placeholder="Title, e.g. CD1 – (4)" aria-label="Page title">`
+             : `<div class="page-title">${esc(page.title || 'Untitled')}</div>`}
+      <div class="page-date">(${fmtDate(page.created)})</div>
+    </div>
+    ${es.map(e => rowHTML(e, mine)).join('')}
+    ${es.length ? '' : `<div class="empty-lines">${mine ? 'Write with your S Pen in the box at the bottom. Each word you add becomes a line here.' : 'No lines on this page yet.'}</div>`}
+    <div class="page-count">${es.length} ${es.length === 1 ? 'line' : 'lines'}</div>
+  `;
+  S.justAdded = null;
+}
+
+function updateRow(e) {
+  const row = document.querySelector(`.row[data-id="${e.id}"]`);
+  if (!row) return;
+  const focused = row.contains(document.activeElement);
+  if (focused) { // only refresh the sound cell so typing isn't interrupted
+    const tmp = document.createElement('div'); tmp.innerHTML = rowHTML(e, S.route.pid === S.me);
+    row.querySelector('.sound').replaceWith(tmp.querySelector('.sound'));
+    return;
+  }
+  row.outerHTML = rowHTML(e, S.route.pid === S.me);
+}
+
+function renderDock() {
+  const dock = $('.dock'); if (!dock) return;
+  if (S.inputMode === 'keys') {
+    dock.innerHTML = `<div class="type-wrap">
+      <input id="typeFr" lang="fr" placeholder="Type a French word or phrase" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="French word">
+      <button class="btn primary" style="flex:none;padding:0 26px" data-act="addtyped">Add line</button></div>`;
+    $('#typeFr').addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); $('[data-act="addtyped"]').click(); } });
+    return;
+  }
+  dock.innerHTML = `
+    <div class="cands" aria-live="polite"></div>
+    <div class="pad-wrap">
+      <div class="pad"><canvas aria-label="Writing area for the S Pen"></canvas>${Pad.strokes.length ? '' : '<span class="ph">Write here with your S Pen</span>'}</div>
+      <div class="pad-actions">
+        <button class="btn primary" data-act="addtop">Add line</button>
+        <button class="btn" data-act="clear">Clear</button>
+      </div>
+    </div>`;
+  Pad.mount($('.pad canvas'));
+  renderCands();
+}
+
+function scrollToEnd() { const d = $('.desk'); if (d) d.scrollTo({ top: d.scrollHeight, behavior: 'smooth' }); }
+
+// ======================================================================
+// Events
+// ======================================================================
+app.addEventListener('click', async ev => {
+  const enCell = ev.target.closest('.cell.en');
+  if (enCell && $('.paper.covered') && !enCell.classList.contains('revealed')) { ev.preventDefault(); enCell.classList.add('revealed'); return; }
+  if (ev.target.closest('input')) return;
+  const t = ev.target.closest('button, [data-speak], [data-edit-fr]');
+  if (!t) return;
+  const act = t.dataset.act;
+  const { pid, pageId } = S.route;
+
+  if (t.dataset.tab) { S.tab = t.dataset.tab; S.query = ''; go('#/' + t.dataset.tab); return; }
+  if (t.dataset.open) { go(`#/${S.tab || S.me}/${t.dataset.open}`); return; }
+  if (t.dataset.ink) { S.ink = t.dataset.ink; LS.set('ink', S.ink); document.documentElement.style.setProperty('--ink', S.ink); renderToolbarOnly(); Pad.redraw(); return; }
+  if (t.dataset.cand !== undefined) { await addEntry(pageId, t.dataset.cand); Pad.clear(); return; }
+
+  const row = t.closest('.row');
+  if (row && t.matches('[data-speak]')) {
+    const e = S.data[pid].entries[row.dataset.id];
+    markPlaying(e.id); Voice.speak(e.fr, () => markPlaying(null)); return;
+  }
+  if (row && t.matches('[data-edit-fr]')) { editFr(row.dataset.id, t); return; }
+  if (row && t.matches('[data-rowmenu]')) { rowMenu(row.dataset.id, t); return; }
+
+  switch (act) {
+    case 'settings': openSettings(); break;
+    case 'home': go('#/' + pid); break;
+    case 'newpage': {
+      const pg = { id: uid(), title: '', created: Date.now(), updated: Date.now() };
+      S.data[S.me].pages[pg.id] = pg; Store.put(S.me, 'page', pg); go(`#/${S.me}/${pg.id}`);
+      setTimeout(() => $('.page-title')?.focus(), 50);
+      break;
+    }
+    case 'pagemenu': pageMenu(t); break;
+    case 'mode-pen': toggleMode('pen'); break;
+    case 'mode-keys': toggleMode('keys'); break;
+    case 'undo': Pad.undo(); break;
+    case 'clear': Pad.clear(); renderDock(); break;
+    case 'addtop': if (Pad.cands[0]) { await addEntry(pageId, Pad.cands[0]); Pad.clear(); } else if (Pad.strokes.length) toast('Still reading your handwriting…'); break;
+    case 'addtyped': { const i = $('#typeFr'); if (i.value.trim()) { await addEntry(pageId, i.value); i.value = ''; i.focus(); } break; }
+    case 'cover': S.covered = !S.covered; $('.paper').classList.toggle('covered', S.covered); renderToolbarOnly(); break;
+    case 'playall': playPage(pid, pageId); break;
+    case 'slow': prefs.slow = !prefs.slow; savePrefs(); renderToolbarOnly(); break;
+    case 'accent': prefs.accent = prefs.accent === 'fr-CA' ? 'fr-FR' : 'fr-CA'; savePrefs(); renderToolbarOnly(); toast(prefs.accent === 'fr-CA' ? 'Canadian French voice' : 'France French voice'); break;
+  }
+});
+
+function toggleMode(m) {
+  if (S.padOpen && S.inputMode === m) S.padOpen = false;
+  else { S.padOpen = true; S.inputMode = m; LS.set('inputMode', m); }
+  const dock = $('.dock'); dock.hidden = !S.padOpen;
+  if (S.padOpen) renderDock();
+  renderToolbarOnly();
+}
+
+// English meaning: save while typing (also works with Samsung's S Pen-to-text)
+const enTimers = {};
+app.addEventListener('input', ev => {
+  const t = ev.target;
+  if (t.matches('[data-en]')) {
+    const id = t.closest('.row').dataset.id, e = S.data[S.me].entries[id];
+    e.en = t.value;
+    clearTimeout(enTimers[id]); enTimers[id] = setTimeout(() => Store.put(S.me, 'entry', e), 700);
+  }
+  if (t.matches('.page-title')) {
+    const pg = S.data[S.me].pages[S.route.pageId];
+    pg.title = t.value; $('.appbar h1').textContent = t.value || 'Untitled';
+    clearTimeout(enTimers.title); enTimers.title = setTimeout(() => Store.put(S.me, 'page', pg), 700);
+  }
+});
+app.addEventListener('keydown', ev => {
+  if (ev.target.matches('[data-en], .page-title') && ev.key === 'Enter') ev.target.blur();
+});
+
+function editFr(id, cell) {
+  const e = S.data[S.me].entries[id];
+  cell.innerHTML = `<input value="${esc(e.fr)}" lang="fr" autocomplete="off" spellcheck="false" aria-label="French">`;
+  const inp = cell.querySelector('input'); inp.focus(); inp.select();
+  const done = async save => {
+    const v = inp.value.trim();
+    if (save && v && v !== e.fr) { e.fr = v; e.sound = ''; updateRow(e); Store.put(S.me, 'entry', e); await fillSound(e, true); }
+    else updateRow(e);
+  };
+  inp.addEventListener('keydown', k => { if (k.key === 'Enter') { k.preventDefault(); inp.blur(); } if (k.key === 'Escape') { inp.dataset.cancel = 1; inp.blur(); } });
+  inp.addEventListener('blur', () => done(!inp.dataset.cancel), { once: true });
+}
+
+function editSound(id) {
+  const e = S.data[S.me].entries[id];
+  const cell = document.querySelector(`.row[data-id="${id}"] .sound`);
+  cell.removeAttribute('data-speak');
+  cell.innerHTML = `<input value="${esc(e.sound)}" autocomplete="off" spellcheck="false" aria-label="Sound spelling">`;
+  const inp = cell.querySelector('input'); inp.focus(); inp.select();
+  inp.addEventListener('keydown', k => { if (k.key === 'Enter') { k.preventDefault(); inp.blur(); } });
+  inp.addEventListener('blur', () => { e.sound = inp.value.trim(); e.guessed = false; Store.put(S.me, 'entry', e); updateRow(e); }, { once: true });
+}
+
+// ---------- popovers ----------
+function popover(anchor, items) {
+  closePop();
+  const pop = document.createElement('div'); pop.className = 'pop'; pop.setAttribute('role', 'menu');
+  pop.innerHTML = items.map((it, i) => `<button role="menuitem" data-i="${i}" class="${it.danger ? 'danger' : ''}">${esc(it.label)}</button>`).join('');
+  document.body.appendChild(pop);
+  const r = anchor.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+  pop.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+  pop.style.top = (r.bottom + h + 8 > innerHeight ? r.top - h - 6 : r.bottom + 6) + 'px';
+  pop.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; closePop(); items[+b.dataset.i].run(); });
+  setTimeout(() => document.addEventListener('pointerdown', outside), 0);
+  function outside(e) { if (!pop.contains(e.target)) { closePop(); } }
+  pop._outside = outside;
+}
+function closePop() { const p = $('.pop'); if (p) { document.removeEventListener('pointerdown', p._outside); p.remove(); } }
+
+function rowMenu(id, anchor) {
+  const e = S.data[S.me].entries[id];
+  popover(anchor, [
+    { label: 'Edit French', run: () => editFr(id, document.querySelector(`.row[data-id="${id}"] .fr`)) },
+    { label: 'Edit sound spelling', run: () => editSound(id) },
+    { label: 'Look up sound again', run: () => { e.sound = ''; updateRow(e); fillSound(e, true); } },
+    { label: 'Delete line', danger: true, run: () => deleteEntry(id) },
+  ]);
+}
+function pageMenu(anchor) {
+  const { pid, pageId } = S.route, mine = pid === S.me;
+  const items = [{ label: 'Settings', run: openSettings }];
+  if (mine) items.push({ label: 'Delete page', danger: true, run: () => {
+    const es = entriesOf(pid, pageId);
+    if (!confirm(`Delete this page and its ${es.length} lines? This can’t be undone.`)) return;
+    delete S.data[pid].pages[pageId]; es.forEach(e => delete S.data[pid].entries[e.id]);
+    Store.del(pid, ['page:' + pageId, ...es.map(e => 'entry:' + e.id)]);
+    go('#/' + pid); toast('Page deleted');
+  } });
+  popover(anchor, items);
+}
+
+// ---------- toast ----------
+let toastTimer;
+function toast(msg, actionLabel, action) {
+  $('.toast')?.remove(); clearTimeout(toastTimer);
+  const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status');
+  t.innerHTML = `<span>${esc(msg)}</span>${actionLabel ? `<button>${esc(actionLabel)}</button>` : ''}`;
+  if (actionLabel) t.querySelector('button').onclick = () => { t.remove(); action(); };
+  document.body.appendChild(t);
+  toastTimer = setTimeout(() => t.remove(), actionLabel ? 6000 : 3000);
+}
+
+// ---------- modals ----------
+function modal(html, onMount) {
+  const s = document.createElement('div'); s.className = 'scrim';
+  s.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
+  document.body.appendChild(s);
+  onMount && onMount(s, () => s.remove());
+  return s;
+}
+
+function openSettings(first) {
+  const draft = { me: S.me || 'p1', profiles: S.profiles.map(p => ({ ...p })), order: prefs.order, accent: prefs.accent, pass: Store.passcode };
+  const html = () => `
+    <h2>${first ? 'Set up this tablet' : 'Settings'}</h2>
+    ${first ? '<p>Pick whose tablet this is. You’ll write on your own pages and can read the other person’s.</p>' : ''}
+    <div class="field"><span class="lbl">This device belongs to</span>
+      <div class="who">${draft.profiles.map(p => `<button style="--c:${p.color}" aria-pressed="${draft.me === p.id}" data-me="${p.id}">${esc(p.name)}</button>`).join('')}</div></div>
+    <div class="field"><span class="lbl">Names and ink colours</span>
+      ${draft.profiles.map((p, i) => `<div class="person-row"><input class="text" data-name="${i}" value="${esc(p.name)}" aria-label="Name">
+        <div class="colors">${INKS.slice(0, 4).map(c => `<button style="background:${c}" aria-pressed="${p.color === c}" data-color="${i}|${c}" aria-label="Colour"></button>`).join('')}</div></div>`).join('')}</div>
+    <div class="field"><span class="lbl">Line order</span>
+      <div class="seg"><button data-order="en-fr" aria-pressed="${draft.order === 'en-fr'}">English → French</button><button data-order="fr-en" aria-pressed="${draft.order === 'fr-en'}">French → English</button></div></div>
+    <div class="field"><span class="lbl">Voice</span>
+      <div class="seg"><button data-accent="fr-FR" aria-pressed="${draft.accent === 'fr-FR'}">France</button><button data-accent="fr-CA" aria-pressed="${draft.accent === 'fr-CA'}">Canada</button></div></div>
+    ${Store.auth ? `<div class="field"><label for="pass">Passcode</label><input class="text" id="pass" type="password" value="${esc(draft.pass)}" autocomplete="current-password"></div>` : ''}
+    <div class="field note">${Store.mode === 'remote'
+      ? 'Your notes sync through your Vercel storage, so both tablets see the same pages.'
+      : 'Notes are saved on this device only. To sync two tablets, connect Upstash Redis to this project in Vercel (see the README).'}
+      Sound spellings come from Wiktionary; a small ≈ means the word wasn’t found and the spelling was guessed.</div>
+    <div class="actions">${first ? '' : '<button class="btn" data-close>Cancel</button>'}<button class="btn primary" style="flex:none" data-save>Save</button></div>`;
+  modal(html(), (s, close) => {
+    const rerender = () => { const scroll = s.firstChild.scrollTop; s.firstChild.innerHTML = html(); s.firstChild.scrollTop = scroll; };
+    s.addEventListener('input', e => { if (e.target.dataset.name) draft.profiles[+e.target.dataset.name].name = e.target.value; if (e.target.id === 'pass') draft.pass = e.target.value; });
+    s.addEventListener('click', async e => {
+      const b = e.target.closest('button'); if (!b) { if (e.target === s && !first) close(); return; }
+      if (b.dataset.me) { draft.me = b.dataset.me; rerender(); }
+      if (b.dataset.color) { const [i, c] = b.dataset.color.split('|'); draft.profiles[+i].color = c; rerender(); }
+      if (b.dataset.order) { draft.order = b.dataset.order; rerender(); }
+      if (b.dataset.accent) { draft.accent = b.dataset.accent; rerender(); }
+      if (b.hasAttribute('data-close')) close();
+      if (b.hasAttribute('data-save')) {
+        draft.profiles.forEach(p => p.name = p.name.trim() || (p.id === 'p1' ? 'Person 1' : 'Person 2'));
+        const changedProfiles = JSON.stringify(draft.profiles) !== JSON.stringify(S.profiles);
+        S.me = draft.me; LS.set('me', S.me);
+        prefs.order = draft.order; prefs.accent = draft.accent; savePrefs();
+        if (Store.auth) { Store.passcode = draft.pass; LS.set('pass', draft.pass); }
+        S.profiles = draft.profiles; LS.set('ink', null); S.ink = myInk();
+        close();
+        if (changedProfiles) await Store.saveProfiles(S.profiles);
+        if (first) { await loadAll(); S.tab = S.me; go('#/' + S.me); }
+        render();
+      }
+    });
+  });
+}
+
+let askingPass = false;
+function askPasscode() {
+  if (askingPass) return; askingPass = true;
+  modal(`<h2>Enter passcode</h2><p>This notebook is protected. Use the passcode you set in Vercel.</p>
+    <div class="field"><input class="text" id="passOnly" type="password" autocomplete="current-password" aria-label="Passcode"></div>
+    <div class="actions"><button class="btn primary" style="flex:none" data-ok>Unlock</button></div>`, (s, close) => {
+    const inp = $('#passOnly', s); inp.focus();
+    const ok = async () => {
+      Store.passcode = inp.value; LS.set('pass', inp.value); close(); askingPass = false;
+      if (!booted) return boot();
+      await loadAll(); await Store.retry(); render();
+    };
+    s.querySelector('[data-ok]').onclick = ok;
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') ok(); });
+  });
+}
+
+// ======================================================================
+// Sync
+// ======================================================================
+async function loadAll() {
+  try {
+    S.profiles = await Store.loadProfiles();
+    const [a, b] = await Promise.all([Store.loadPerson('p1'), Store.loadPerson('p2')]);
+    S.data.p1 = a; S.data.p2 = b;
+  } catch (e) {
+    if (e.code === 401) askPasscode(); else toast('Couldn’t load notes. Check your connection.');
+  }
+}
+
+async function poll() {
+  if (Store.mode !== 'remote' || document.visibilityState !== 'visible' || askingPass) return;
+  if (Store.failed.length) await Store.retry();
+  if (Store.pending || $('.scrim') || $('.pop')) return;
+  const active = document.activeElement;
+  if (active && active.matches('input') && app.contains(active)) return; // don't interrupt typing
+  if (Pad.strokes.length || (window.speechSynthesis && speechSynthesis.speaking)) return;
+  try {
+    const before = JSON.stringify([S.profiles, S.data]);
+    S.profiles = await Store.loadProfiles();
+    S.data.p1 = await Store.loadPerson('p1');
+    S.data.p2 = await Store.loadPerson('p2');
+    if (JSON.stringify([S.profiles, S.data]) !== before) {
+      const scroll = $('.desk')?.scrollTop;
+      render();
+      if (scroll != null && $('.desk')) $('.desk').scrollTop = scroll;
+    }
+  } catch (e) { if (e.code === 401) askPasscode(); }
+}
+
+// ======================================================================
+// Start
+// ======================================================================
+let booted = false;
+async function boot() {
+  await loadAll();
+  if (askingPass) return; // wrong passcode: the unlock box is showing again
+  booted = true;
+  S.ink = myInk();
+  window.addEventListener('hashchange', render);
+  if (!S.me) { render(); openSettings(true); }
+  else { S.tab = S.tab || S.me; render(); }
+  setInterval(poll, 8000);
+  document.addEventListener('visibilitychange', poll);
+}
+(async function start() {
+  app.innerHTML = '<header class="appbar"><h1>French notes</h1></header>';
+  await Store.init();
+  if (Store.mode === 'remote' && Store.auth && !Store.passcode) { askPasscode(); return; }
+  boot();
+})();
+</script>
+</body>
+</html>

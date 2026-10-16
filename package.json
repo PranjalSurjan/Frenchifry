@@ -1,0 +1,7 @@
+{
+  "name": "french-notebook",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared S Pen French notebook with pronunciation"
+}

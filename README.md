@@ -9,7 +9,6 @@ You type the English meaning yourself.
 - `index.html` – the app
 - `pron.js` – sound spellings (Wiktionary lookup, plus a spelling-rule guess when a word isn't found)
 - `api/data.js` – saves notes so both tablets stay in sync
-- `api/handwriting.js` – sends S Pen strokes to Google's free handwriting reader (French)
 
 ## Put it on Vercel
 
@@ -31,8 +30,10 @@ You type the English meaning yourself.
 
 ## How to use it
 
-- **Write** French in the box at the bottom with the S Pen, then tap **Add line** to add the recognized text to the page.
-- **Type** the English meaning on the line. Samsung's handwriting-to-text works in that box too.
+- **Write anywhere on your page** with the S Pen. Strokes stay as freehand ink; finger touch remains available for scrolling and tapping.
+- Use **Undo** to remove your last stroke or **Clear** to erase all ink on the page.
+- Tap **Type** if you want to add a French text line with the keyboard.
+- **Type** the English meaning on a line.
 - **Tap the sound spelling or the speaker** to hear it. `0.6×` slows the voice, `FR`/`CA` switches France and Canadian French.
 - **Eye button** blurs the English so you can test yourself; tap a line to reveal it.
 - **⋮ on a line** lets you edit the French, fix the sound spelling, look it up again, or delete the line.
@@ -40,10 +41,9 @@ You type the English meaning yourself.
 - Your friend's pages are on their tab at the top, read only.
 
 A small ≈ before a sound spelling means Wiktionary didn't have that word and the spelling was guessed
-from French spelling rules. Check those ones, and edit them if they look wrong.
+from French spelling rules. Check those ones, and edit them if they look wrong. S Pen ink is saved with
+the page and syncs with the notebook; browser ink cannot reproduce all of Samsung Notes' native features.
 
 ## Notes
 
 - Without the Upstash step the app still works, but notes are saved on that tablet only.
-- The handwriting reader is Google's free public service. It's widely used but unofficial, so if it ever
-  stops working, switch to the keyboard button in the toolbar.

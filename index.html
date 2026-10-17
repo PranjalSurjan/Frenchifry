@@ -123,25 +123,13 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .covered .cell.en:not(.revealed) { filter: blur(7px); cursor: pointer; user-select: none; }
 .page-count { position: absolute; right: 24px; bottom: 16px; font-size: .9rem; color: var(--muted); }
 .empty-lines { height: calc(var(--line) * 2); display: flex; align-items: flex-end; padding-bottom: 10px; color: var(--muted); font-size: .95rem; }
+.ink-layer { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
 
-/* ---------- writing pad dock ---------- */
+/* ---------- keyboard dock ---------- */
 .dock { flex: none; background: var(--chrome); border-top: 1px solid var(--hair); padding-bottom: env(safe-area-inset-bottom, 0px); }
 .dock[hidden] { display: none; }
-.cands { display: flex; gap: 8px; padding: 8px 12px; overflow-x: auto; min-height: 56px; align-items: center; scrollbar-width: none; }
-.cands .hint { color: var(--muted); font-size: .9rem; }
-.pad-wrap { display: flex; gap: 10px; padding: 0 12px 12px; }
-.pad {
-  position: relative; flex: 1; height: 150px; border-radius: 14px; overflow: hidden;
-  background: var(--paper);
-  background-image: linear-gradient(to bottom, transparent 99px, var(--rule) 99px, var(--rule) 101px, transparent 101px);
-  border: 1px solid var(--hair);
-}
-.pad canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
-.pad .ph { position: absolute; left: 18px; top: 14px; font-size: .95rem; color: var(--muted); pointer-events: none; }
-.pad-actions { display: flex; flex-direction: column; gap: 8px; width: 112px; }
 .btn { height: 48px; border-radius: 12px; background: var(--chip); font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .btn.primary { background: var(--ink); color: #fff; flex: 1; }
-.btn.danger { color: var(--danger); }
 .type-wrap { display: flex; gap: 10px; padding: 12px; }
 .type-wrap input {
   flex: 1; height: 56px; border-radius: 12px; border: 1px solid var(--hair); background: var(--paper);
@@ -226,7 +214,6 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   .cell { font-size: 1.3rem; }
   .page-title { font-size: 1.6rem; }
   .page-date { font-size: 1.1rem; }
-  .pad-actions { width: 88px; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .row.new { animation: ink-in .35s ease-out; }
@@ -356,8 +343,8 @@ const S = {
   data: { p1: { pages: {}, entries: {} }, p2: { pages: {}, entries: {} } },
   route: { view: 'home' },
   ink: null,
-  inputMode: LS.get('inputMode', 'pen'),
-  padOpen: true,
+  inputMode: 'pen',
+  padOpen: false,
   covered: false,
   query: '',
   justAdded: null,
@@ -421,103 +408,106 @@ function markPlaying(id) {
   if (id) { const b = document.querySelector(`.row[data-id="${id}"] .speak`); if (b) { b.classList.add('playing'); b.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }
 }
 
-// ======================================================================
-// Handwriting pad (S Pen)
-// ======================================================================
-const Pad = {
-  strokes: [], cur: null, penSeen: false, timer: null, t0: 0, cands: [], canvas: null, ctx: null, busy: 0,
-  mount(canvas) {
-    this.canvas = canvas; this.ctx = canvas.getContext('2d');
-    const fit = () => {
-      const r = canvas.getBoundingClientRect(), d = window.devicePixelRatio || 1;
-      canvas.width = Math.round(r.width * d); canvas.height = Math.round(r.height * d);
-      this.ctx.setTransform(d, 0, 0, d, 0, 0); this.redraw();
-    };
-    new ResizeObserver(fit).observe(canvas); fit();
-    canvas.addEventListener('pointerdown', e => this.down(e));
-    canvas.addEventListener('pointermove', e => this.move(e));
-    canvas.addEventListener('pointerup', e => this.up(e));
-    canvas.addEventListener('pointercancel', e => this.up(e));
-    canvas.addEventListener('contextmenu', e => e.preventDefault());
+const Ink = {
+  paper: null, canvas: null, ctx: null, page: null, pid: null, cur: null, observer: null,
+  mount(paper, page, pid, readonly) {
+    this.paper = paper; this.page = page; this.pid = pid;
+    this.canvas = paper.querySelector('.ink-layer');
+    this.ctx = this.canvas.getContext('2d');
+    this.readonly = readonly;
+    if (!paper.dataset.inkReady) {
+      paper.dataset.inkReady = 'true';
+      paper.addEventListener('pointerdown', e => this.down(e), true);
+      paper.addEventListener('pointermove', e => this.move(e), true);
+      paper.addEventListener('pointerup', e => this.up(e), true);
+      paper.addEventListener('pointercancel', e => this.up(e), true);
+    }
+    if (this.observer) this.observer.disconnect();
+    this.observer = new ResizeObserver(() => this.fit());
+    this.observer.observe(paper);
+    this.fit();
   },
-  point(ev) {
-    const r = this.canvas.getBoundingClientRect();
-    return { x: ev.clientX - r.left, y: ev.clientY - r.top, t: Math.round(ev.timeStamp - this.t0), p: ev.pressure || 0.5 };
+  fit() {
+    if (!this.canvas || !this.paper) return;
+    const rect = this.paper.getBoundingClientRect(), ratio = window.devicePixelRatio || 1;
+    this.canvas.width = Math.round(rect.width * ratio);
+    this.canvas.height = Math.round(rect.height * ratio);
+    this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    this.redraw();
+  },
+  point(e) {
+    const rect = this.paper.getBoundingClientRect();
+    const unit = n => Math.round(n * 10000) / 10000;
+    return {
+      x: unit((e.clientX - rect.left) / rect.width),
+      y: unit((e.clientY - rect.top) / rect.height),
+      p: Math.round((e.pressure || 0.5) * 100) / 100,
+    };
   },
   down(e) {
-    if (e.pointerType === 'pen') this.penSeen = true;
-    if (e.pointerType === 'touch' && this.penSeen) return; // palm rejection once the S Pen is used
-    e.preventDefault();
-    this.canvas.setPointerCapture(e.pointerId);
-    clearTimeout(this.timer);
-    if (!this.strokes.length) this.t0 = e.timeStamp;
-    const p = this.point(e);
-    this.cur = { x: [p.x], y: [p.y], t: [p.t], p: [p.p] };
-    this.strokes.push(this.cur);
-    this.dot(p);
-    $('.pad .ph')?.remove();
+    if (this.readonly || e.pointerType !== 'pen') return;
+    e.preventDefault(); e.stopPropagation();
+    this.paper.setPointerCapture(e.pointerId);
+    const stroke = { color: S.ink, points: [this.point(e)] };
+    this.page.strokes = this.page.strokes || [];
+    this.page.strokes.push(stroke);
+    this.cur = { pointerId: e.pointerId, stroke };
+    this.redraw();
   },
   move(e) {
-    if (!this.cur) return;
-    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-    for (const ev of evs) {
-      const p = this.point(ev), s = this.cur, n = s.x.length - 1;
-      this.seg(s.x[n], s.y[n], p.x, p.y, p.p);
-      s.x.push(p.x); s.y.push(p.y); s.t.push(p.t); s.p.push(p.p);
-    }
+    if (!this.cur || e.pointerId !== this.cur.pointerId) return;
+    e.preventDefault(); e.stopPropagation();
+    const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const point of events) this.cur.stroke.points.push(this.point(point));
+    this.redraw();
   },
-  up() {
-    if (!this.cur) return;
+  up(e) {
+    if (!this.cur || e.pointerId !== this.cur.pointerId) return;
+    e.preventDefault(); e.stopPropagation();
     this.cur = null;
-    clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.recognize(), 600);
+    this.page.updated = Date.now();
+    Store.put(this.pid, 'page', this.page);
   },
-  width: p => 1.6 + p * 3.2,
-  seg(x1, y1, x2, y2, p) {
-    const c = this.ctx; c.strokeStyle = S.ink; c.lineCap = 'round'; c.lineJoin = 'round';
-    c.lineWidth = this.width(p); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
-  },
-  dot(p) { const c = this.ctx; c.fillStyle = S.ink; c.beginPath(); c.arc(p.x, p.y, this.width(p.p) / 2, 0, Math.PI * 2); c.fill(); },
-  redraw() {
-    if (!this.ctx) return;
-    const r = this.canvas.getBoundingClientRect();
-    this.ctx.clearRect(0, 0, r.width, r.height);
-    for (const s of this.strokes) { this.dot({ x: s.x[0], y: s.y[0], p: s.p[0] }); for (let i = 1; i < s.x.length; i++) this.seg(s.x[i - 1], s.y[i - 1], s.x[i], s.y[i], s.p[i]); }
-  },
-  undo() { this.strokes.pop(); this.redraw(); this.strokes.length ? this.recognize() : this.setCands([]); },
-  clear() { this.strokes = []; this.redraw(); this.setCands([]); },
-  setCands(c) { this.cands = c; renderCands(); },
-  async recognize() {
-    if (!this.strokes.length) return this.setCands([]);
-    const r = this.canvas.getBoundingClientRect();
-    const body = {
-      options: 'enable_pre_space',
-      requests: [{ writing_guide: { writing_area_width: Math.round(r.width), writing_area_height: Math.round(r.height) },
-        ink: this.strokes.map(s => [s.x.map(Math.round), s.y.map(Math.round), s.t]), language: 'fr' }],
-    };
-    const ticket = ++this.busy;
-    let data = null;
-    for (const url of ['/api/handwriting', 'https://inputtools.google.com/request?ime=handwriting&app=mobilesearch&cs=1&oe=UTF-8']) {
-      try {
-        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (res.ok) { data = await res.json(); if (data && data[0] === 'SUCCESS') break; }
-      } catch (e) { }
-      data = null;
+  stroke(ctx, stroke, width, height) {
+    const points = stroke.points;
+    if (!points.length) return;
+    ctx.strokeStyle = stroke.color || prof(this.pid).color;
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const size = p => 1.6 + p * 3.2;
+    ctx.beginPath();
+    ctx.arc(points[0].x * width, points[0].y * height, size(points[0].p) / 2, 0, Math.PI * 2);
+    ctx.fill();
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineWidth = size(points[i].p);
+      ctx.beginPath();
+      ctx.moveTo(points[i - 1].x * width, points[i - 1].y * height);
+      ctx.lineTo(points[i].x * width, points[i].y * height);
+      ctx.stroke();
     }
-    if (ticket !== this.busy) return; // a newer stroke started a newer request
-    if (!data) { this.setCands([]); renderCands('Couldn’t read the handwriting. Check your connection, or switch to the keyboard.'); return; }
-    const list = (data[1] && data[1][0] && data[1][0][1]) || [];
-    this.setCands([...new Set(list.map(s => s.trim()).filter(Boolean))].slice(0, 8));
+  },
+  redraw() {
+    if (!this.ctx || !this.canvas || !this.paper) return;
+    const rect = this.paper.getBoundingClientRect();
+    this.ctx.clearRect(0, 0, rect.width, rect.height);
+    for (const stroke of this.page.strokes || []) this.stroke(this.ctx, stroke, rect.width, rect.height);
+  },
+  undo() {
+    if (!this.page || !this.page.strokes || !this.page.strokes.length) return;
+    this.page.strokes.pop();
+    this.page.updated = Date.now();
+    this.redraw();
+    Store.put(this.pid, 'page', this.page);
+  },
+  clear() {
+    if (!this.page || !this.page.strokes || !this.page.strokes.length) return;
+    if (!confirm('Erase all handwriting on this page? This can’t be undone.')) return;
+    this.page.strokes = [];
+    this.page.updated = Date.now();
+    this.redraw();
+    Store.put(this.pid, 'page', this.page);
   },
 };
-
-function renderCands(msg) {
-  const box = $('.cands'); if (!box) return;
-  if (msg) { box.innerHTML = `<span class="hint">${esc(msg)}</span>`; return; }
-  const hint = Pad.cands.length ? 'Handwriting ready. Tap Add line to add it.' :
-    Pad.strokes.length ? 'Reading…' : 'Write a French word or phrase below.';
-  box.innerHTML = `<span class="hint">${hint}</span>`;
-}
 
 // ======================================================================
 // Entries
@@ -641,7 +631,7 @@ function renderPage() {
     </header>
     <nav class="toolbar" aria-label="Tools"></nav>
     <main class="desk"><div class="paper ${S.covered ? 'covered' : ''}"></div></main>
-    ${mine ? `<section class="dock" ${S.padOpen ? '' : 'hidden'}></section>` : ''}
+    ${mine && S.padOpen ? '<section class="dock"></section>' : ''}
   `;
   renderToolbarOnly();
   renderPageBody();
@@ -654,13 +644,13 @@ function renderToolbarOnly() {
   const swatches = [...new Set([prof(S.me).color, ...INKS])].slice(0, 5);
   bar.innerHTML = `
     ${mine ? `
-      <button class="tool" aria-pressed="${S.padOpen && S.inputMode === 'pen'}" data-act="mode-pen" aria-label="Write with S Pen">${I.pen}</button>
+      <button class="tool" aria-pressed="${S.inputMode === 'pen'}" data-act="mode-pen" aria-label="Write on page with S Pen">${I.pen}</button>
       <button class="tool" aria-pressed="${S.padOpen && S.inputMode === 'keys'}" data-act="mode-keys" aria-label="Type">${I.keyboard}</button>
       <span class="sep"></span>
       ${swatches.map(c => `<button class="swatch" style="background:${c}" aria-pressed="${c === S.ink}" data-ink="${c}" aria-label="Ink colour"></button>`).join('')}
       <span class="sep"></span>
       <button class="tool" data-act="undo" aria-label="Undo last stroke">${I.undo}</button>
-      <button class="tool" data-act="clear" aria-label="Clear writing">${I.clear}</button>
+      <button class="tool" data-act="clear" aria-label="Erase handwriting on this page">${I.clear}</button>
       <span class="sep"></span>` : `<span class="readonly-note">Read only</span><span class="sep"></span>`}
     <button class="tool" aria-pressed="${S.covered}" data-act="cover" aria-label="Hide English to test yourself">${I.eye}</button>
     <button class="tool" data-act="playall" aria-label="${playing ? 'Stop' : 'Play every line'}">${playing ? I.stop : I.play}</button>
@@ -695,9 +685,11 @@ function renderPageBody() {
       <div class="page-date">(${fmtDate(page.created)})</div>
     </div>
     ${es.map(e => rowHTML(e, mine)).join('')}
-    ${es.length ? '' : `<div class="empty-lines">${mine ? 'Write with your S Pen in the box at the bottom. Each word you add becomes a line here.' : 'No lines on this page yet.'}</div>`}
+    ${es.length ? '' : `<div class="empty-lines">    ${mine ? 'Write anywhere on this page with your S Pen.' : 'No lines on this page yet.'}</div>`}
     <div class="page-count">${es.length} ${es.length === 1 ? 'line' : 'lines'}</div>
+    <canvas class="ink-layer" aria-hidden="true"></canvas>
   `;
+  Ink.mount(paper, page, pid, !mine);
   S.justAdded = null;
 }
 
@@ -715,24 +707,10 @@ function updateRow(e) {
 
 function renderDock() {
   const dock = $('.dock'); if (!dock) return;
-  if (S.inputMode === 'keys') {
-    dock.innerHTML = `<div class="type-wrap">
-      <input id="typeFr" lang="fr" placeholder="Type a French word or phrase" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="French word">
-      <button class="btn primary" style="flex:none;padding:0 26px" data-act="addtyped">Add line</button></div>`;
-    $('#typeFr').addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); $('[data-act="addtyped"]').click(); } });
-    return;
-  }
-  dock.innerHTML = `
-    <div class="cands" aria-live="polite"></div>
-    <div class="pad-wrap">
-      <div class="pad"><canvas aria-label="Writing area for the S Pen"></canvas>${Pad.strokes.length ? '' : '<span class="ph">Write here with your S Pen</span>'}</div>
-      <div class="pad-actions">
-        <button class="btn primary" data-act="addtop">Add line</button>
-        <button class="btn" data-act="clear">Clear</button>
-      </div>
-    </div>`;
-  Pad.mount($('.pad canvas'));
-  renderCands();
+  dock.innerHTML = `<div class="type-wrap">
+    <input id="typeFr" lang="fr" placeholder="Type a French word or phrase" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="French word">
+    <button class="btn primary" style="flex:none;padding:0 26px" data-act="addtyped">Add line</button></div>`;
+  $('#typeFr').addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); $('[data-act="addtyped"]').click(); } });
 }
 
 function scrollToEnd() { const d = $('.desk'); if (d) d.scrollTo({ top: d.scrollHeight, behavior: 'smooth' }); }
@@ -752,7 +730,7 @@ app.addEventListener('click', async ev => {
   if (t.dataset.tab) { S.tab = t.dataset.tab; S.query = ''; go('#/' + t.dataset.tab); return; }
   if (t.dataset.deletePage) { deletePage(S.tab || S.me, t.dataset.deletePage); return; }
   if (t.dataset.open) { go(`#/${S.tab || S.me}/${t.dataset.open}`); return; }
-  if (t.dataset.ink) { S.ink = t.dataset.ink; LS.set('ink', S.ink); document.documentElement.style.setProperty('--ink', S.ink); renderToolbarOnly(); Pad.redraw(); return; }
+  if (t.dataset.ink) { S.ink = t.dataset.ink; LS.set('ink', S.ink); document.documentElement.style.setProperty('--ink', S.ink); renderToolbarOnly(); return; }
   const row = t.closest('.row');
   if (row && t.matches('[data-speak]')) {
     const e = S.data[pid].entries[row.dataset.id];
@@ -773,9 +751,8 @@ app.addEventListener('click', async ev => {
     case 'pagemenu': pageMenu(t); break;
     case 'mode-pen': toggleMode('pen'); break;
     case 'mode-keys': toggleMode('keys'); break;
-    case 'undo': Pad.undo(); break;
-    case 'clear': Pad.clear(); renderDock(); break;
-    case 'addtop': if (Pad.cands[0]) { await addEntry(pageId, Pad.cands[0]); Pad.clear(); } else if (Pad.strokes.length) toast('Still reading your handwriting…'); break;
+    case 'undo': Ink.undo(); break;
+    case 'clear': Ink.clear(); break;
     case 'addtyped': { const i = $('#typeFr'); if (i.value.trim()) { await addEntry(pageId, i.value); i.value = ''; i.focus(); } break; }
     case 'cover': S.covered = !S.covered; $('.paper').classList.toggle('covered', S.covered); renderToolbarOnly(); break;
     case 'playall': playPage(pid, pageId); break;
@@ -785,10 +762,11 @@ app.addEventListener('click', async ev => {
 });
 
 function toggleMode(m) {
-  if (S.padOpen && S.inputMode === m) S.padOpen = false;
-  else { S.padOpen = true; S.inputMode = m; LS.set('inputMode', m); }
-  const dock = $('.dock'); dock.hidden = !S.padOpen;
-  if (S.padOpen) renderDock();
+  if (m === 'keys' && S.padOpen && S.inputMode === m) {
+    S.padOpen = false; S.inputMode = 'pen'; LS.set('inputMode', S.inputMode);
+  } else { S.padOpen = m === 'keys'; S.inputMode = m; LS.set('inputMode', m); }
+  if (S.padOpen) { renderPage(); return; }
+  $('.dock')?.remove();
   renderToolbarOnly();
 }
 
@@ -978,7 +956,7 @@ async function poll() {
   if (Store.pending || $('.scrim') || $('.pop')) return;
   const active = document.activeElement;
   if (active && active.matches('input') && app.contains(active)) return; // don't interrupt typing
-  if (Pad.strokes.length || (window.speechSynthesis && speechSynthesis.speaking)) return;
+  if (Ink.cur || (window.speechSynthesis && speechSynthesis.speaking)) return;
   try {
     const before = JSON.stringify([S.profiles, S.data]);
     S.profiles = await Store.loadProfiles();

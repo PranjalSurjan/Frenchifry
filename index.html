@@ -128,8 +128,6 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .dock { flex: none; background: var(--chrome); border-top: 1px solid var(--hair); padding-bottom: env(safe-area-inset-bottom, 0px); }
 .dock[hidden] { display: none; }
 .cands { display: flex; gap: 8px; padding: 8px 12px; overflow-x: auto; min-height: 56px; align-items: center; scrollbar-width: none; }
-.cand { font-family: var(--hand); font-size: 1.35rem; padding: 4px 16px; border-radius: 20px; background: var(--chip); white-space: nowrap; flex: none; }
-.cand.top { background: var(--ink); color: #fff; }
 .cands .hint { color: var(--muted); font-size: .9rem; }
 .pad-wrap { display: flex; gap: 10px; padding: 0 12px 12px; }
 .pad {
@@ -516,11 +514,9 @@ const Pad = {
 function renderCands(msg) {
   const box = $('.cands'); if (!box) return;
   if (msg) { box.innerHTML = `<span class="hint">${esc(msg)}</span>`; return; }
-  if (!Pad.cands.length) {
-    box.innerHTML = `<span class="hint">${Pad.strokes.length ? 'Reading…' : 'Write a French word or phrase below. Tap a suggestion to add it as a line.'}</span>`;
-    return;
-  }
-  box.innerHTML = Pad.cands.map((c, i) => `<button class="cand${i ? '' : ' top'}" data-cand="${esc(c)}">${esc(c)}</button>`).join('');
+  const hint = Pad.cands.length ? 'Handwriting ready. Tap Add line to add it.' :
+    Pad.strokes.length ? 'Reading…' : 'Write a French word or phrase below.';
+  box.innerHTML = `<span class="hint">${hint}</span>`;
 }
 
 // ======================================================================
@@ -757,8 +753,6 @@ app.addEventListener('click', async ev => {
   if (t.dataset.deletePage) { deletePage(S.tab || S.me, t.dataset.deletePage); return; }
   if (t.dataset.open) { go(`#/${S.tab || S.me}/${t.dataset.open}`); return; }
   if (t.dataset.ink) { S.ink = t.dataset.ink; LS.set('ink', S.ink); document.documentElement.style.setProperty('--ink', S.ink); renderToolbarOnly(); Pad.redraw(); return; }
-  if (t.dataset.cand !== undefined) { await addEntry(pageId, t.dataset.cand); Pad.clear(); return; }
-
   const row = t.closest('.row');
   if (row && t.matches('[data-speak]')) {
     const e = S.data[pid].entries[row.dataset.id];

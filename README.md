@@ -31,7 +31,7 @@ You type the English meaning yourself.
 
 ## How to use it
 
-- **Write** French in the box at the bottom with the S Pen. Tap a suggestion (or **Add line**) to add it to the page.
+- **Write** French in the box at the bottom with the S Pen, then tap **Add line** to add the recognized text to the page.
 - **Type** the English meaning on the line. Samsung's handwriting-to-text works in that box too.
 - **Tap the sound spelling or the speaker** to hear it. `0.6×` slows the voice, `FR`/`CA` switches France and Canadian French.
 - **Eye button** blurs the English so you can test yourself; tap a line to reveal it.

@@ -30,8 +30,11 @@ You type the English meaning yourself.
 
 ## How to use it
 
-- **Write anywhere on your page** with the S Pen. Strokes stay as freehand ink; finger touch remains available for scrolling and tapping.
-- Use **Undo** to remove your last stroke or **Clear** to erase all ink on the page.
+- **Write anywhere on your page** with the S Pen. Only the pen writes: fingers scroll and tap, and a palm resting
+  on the screen while you write is ignored. The page grows as you write near the bottom.
+- **Hold the S Pen button** while writing to rub out strokes, or pick the **eraser** in the toolbar.
+- A quick **pen tap** on a button or box still presses it, just like a finger.
+- **Undo / Redo** step back and forward through strokes and erasing; **Clear** erases all ink on the page (Undo brings it back).
 - Tap **Type** if you want to add a French text line with the keyboard.
 - **Type** the English meaning on a line.
 - **Tap the sound spelling or the speaker** to hear it. `0.6×` slows the voice, `FR`/`CA` switches France and Canadian French.

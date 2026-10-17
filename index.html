@@ -124,6 +124,16 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .page-count { position: absolute; right: 24px; bottom: 16px; font-size: .9rem; color: var(--muted); }
 .empty-lines { height: calc(var(--line) * 2); display: flex; align-items: flex-end; padding-bottom: 10px; color: var(--muted); font-size: .95rem; }
 .ink-layer { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
+/* The S Pen must never start a text selection, callout or scroll on the page. */
+.paper { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.paper input { -webkit-user-select: text; user-select: text; }
+.paper.pen-near { touch-action: none; }
+.pen-hover {
+  position: absolute; left: 0; top: 0; z-index: 2; width: 8px; height: 8px; margin: -4px 0 0 -4px;
+  border-radius: 50%; background: var(--ink); opacity: .5; pointer-events: none; will-change: transform;
+}
+.pen-hover.erase { width: 24px; height: 24px; margin: -12px 0 0 -12px; background: rgba(255,255,255,.55); border: 1.5px solid var(--muted); opacity: 1; }
+.pen-hover[hidden] { display: none; }
 
 /* ---------- keyboard dock ---------- */
 .dock { flex: none; background: var(--chrome); border-top: 1px solid var(--hair); padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -235,6 +245,8 @@ const I = {
   pen: '<svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4z"/><path d="M14 6l3 3"/></svg>',
   keyboard: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>',
   undo: '<svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 010 12"/></svg>',
+  redo: '<svg viewBox="0 0 24 24"><path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 000 12"/></svg>',
+  eraser: '<svg viewBox="0 0 24 24"><path d="M15 4l5 5-10 10H6l-3-3z"/><path d="M10 9l5 5M13 20h8"/></svg>',
   clear: '<svg viewBox="0 0 24 24"><path d="M7 21h10M5 15l7-11 7 11-4 3H9z"/></svg>',
   eye: '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>',
@@ -408,20 +420,45 @@ function markPlaying(id) {
   if (id) { const b = document.querySelector(`.row[data-id="${id}"] .speak`); if (b) { b.classList.add('playing'); b.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }
 }
 
+// S Pen ink, Samsung Notes style: the pen writes, fingers scroll and tap, a palm resting on the glass
+// is ignored, and holding the S Pen button (or picking the eraser) rubs out whole strokes.
+// New strokes are { v: 2, id, color, points: [{ x: share of page width, y: px from page top, p: pressure }] }
+// so writing stays on its line when rows are added. Older strokes stored y as a share of the page height.
 const Ink = {
-  paper: null, canvas: null, ctx: null, page: null, pid: null, cur: null, observer: null,
+  paper: null, canvas: null, ctx: null, hover: null, rect: null, observer: null,
+  pid: null, pageId: null, readonly: true, tool: 'pen', cur: null, done: [], undone: [],
+  nearTimer: null, swallowUntil: 0,
+  get page() { return S.data[this.pid]?.pages[this.pageId]; },
+  get strokes() { const pg = this.page; return pg ? (pg.strokes = pg.strokes || []) : []; },
   mount(paper, page, pid, readonly) {
-    this.paper = paper; this.page = page; this.pid = pid;
+    if (page.id !== this.pageId || pid !== this.pid) { this.done = []; this.undone = []; this.cur = null; }
+    this.paper = paper; this.pid = pid; this.pageId = page.id; this.readonly = readonly;
     this.canvas = paper.querySelector('.ink-layer');
-    this.ctx = this.canvas.getContext('2d');
-    this.readonly = readonly;
+    this.ctx = this.canvas.getContext('2d', { desynchronized: true }); // low-latency canvas where Chrome supports it
+    this.hover = paper.querySelector('.pen-hover');
     if (!paper.dataset.inkReady) {
       paper.dataset.inkReady = 'true';
-      paper.addEventListener('pointerdown', e => this.down(e), true);
-      paper.addEventListener('pointermove', e => this.move(e), true);
-      paper.addEventListener('pointerup', e => this.up(e), true);
-      paper.addEventListener('pointercancel', e => this.up(e), true);
+      const opt = { capture: true, passive: false };
+      paper.addEventListener('pointerdown', e => this.down(e), opt);
+      paper.addEventListener('pointermove', e => this.move(e), opt);
+      // pointerrawupdate arrives as soon as the pen moves instead of once per frame, so ink keeps up with the nib.
+      if ('onpointerrawupdate' in window) paper.addEventListener('pointerrawupdate', e => this.draw(e), opt);
+      paper.addEventListener('pointerup', e => this.up(e), opt);
+      paper.addEventListener('pointercancel', e => this.up(e), opt);
+      paper.addEventListener('pointerleave', e => { if (e.pointerType === 'pen' && !this.cur) this.away(); });
+      // Chrome decides whether a touch scrolls from touchstart/touchmove, which come after pointerdown.
+      // Left alone, it treated the S Pen as a finger, scrolled a few pixels in and cancelled the stroke.
+      const hold = e => { if (this.holds(e)) e.preventDefault(); };
+      paper.addEventListener('touchstart', hold, opt);
+      paper.addEventListener('touchmove', hold, opt);
+      paper.addEventListener('contextmenu', e => { if (this.cur || paper.classList.contains('pen-near')) e.preventDefault(); }, true);
+      paper.addEventListener('click', e => {
+        if (performance.now() < this.swallowUntil) { e.preventDefault(); e.stopPropagation(); } // a stroke that ended on a button
+      }, true);
     }
+    paper.style.minHeight = '';
+    const ys = this.strokes.filter(s => s.v === 2).flatMap(s => s.points.map(p => p.y));
+    if (ys.length) this.extend(Math.max(...ys));
     if (this.observer) this.observer.disconnect();
     this.observer = new ResizeObserver(() => this.fit());
     this.observer.observe(paper);
@@ -429,83 +466,195 @@ const Ink = {
   },
   fit() {
     if (!this.canvas || !this.paper) return;
-    const rect = this.paper.getBoundingClientRect(), ratio = window.devicePixelRatio || 1;
+    const rect = this.rect = this.paper.getBoundingClientRect(), ratio = window.devicePixelRatio || 1;
     this.canvas.width = Math.round(rect.width * ratio);
     this.canvas.height = Math.round(rect.height * ratio);
     this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     this.redraw();
   },
+  holds(e) {
+    if (this.readonly) return false;
+    if (this.cur) return true; // pen on the glass: neither it nor a resting palm may scroll the page
+    for (const t of e.touches) if (t.touchType === 'stylus') return true;
+    return false;
+  },
+  sawPen() { // while the S Pen hovers, the page stops panning so the first touch of the nib can't scroll it
+    if (this.readonly) return;
+    this.paper.classList.add('pen-near');
+    clearTimeout(this.nearTimer);
+    this.nearTimer = setTimeout(() => this.paper && this.paper.classList.remove('pen-near'), 800);
+  },
+  away() {
+    clearTimeout(this.nearTimer);
+    if (this.paper) this.paper.classList.remove('pen-near');
+    if (this.hover) this.hover.hidden = true;
+  },
+  erasing(e) { return this.tool === 'eraser' || (e.buttons & 34) !== 0 || e.button === 5; }, // S Pen button or eraser end
+  showHover(e) {
+    if (!this.hover) return;
+    const r = this.paper.getBoundingClientRect();
+    this.hover.hidden = false;
+    this.hover.classList.toggle('erase', this.erasing(e));
+    this.hover.style.transform = `translate(${e.clientX - r.left}px, ${e.clientY - r.top}px)`;
+  },
   point(e) {
-    const rect = this.paper.getBoundingClientRect();
-    const unit = n => Math.round(n * 10000) / 10000;
+    const r = this.rect;
     return {
-      x: unit((e.clientX - rect.left) / rect.width),
-      y: unit((e.clientY - rect.top) / rect.height),
+      x: Math.round((e.clientX - r.left) / r.width * 10000) / 10000,
+      y: Math.round((e.clientY - r.top) * 10) / 10,
       p: Math.round((e.pressure || 0.5) * 100) / 100,
     };
   },
   down(e) {
-    if (this.readonly || e.pointerType !== 'pen') return;
+    if (e.pointerType !== 'pen') return;
+    this.sawPen();
+    if (this.readonly) return;
     e.preventDefault(); e.stopPropagation();
-    this.paper.setPointerCapture(e.pointerId);
-    const stroke = { color: S.ink, points: [this.point(e)] };
-    this.page.strokes = this.page.strokes || [];
-    this.page.strokes.push(stroke);
-    this.cur = { pointerId: e.pointerId, stroke };
-    this.redraw();
+    if (this.cur) return;
+    try { this.paper.setPointerCapture(e.pointerId); } catch (err) { }
+    this.rect = this.paper.getBoundingClientRect();
+    const pt = this.point(e);
+    this.cur = {
+      pointerId: e.pointerId, t: e.timeStamp, x0: e.clientX, y0: e.clientY, moved: false,
+      target: e.target.closest('button, input, [data-speak], [data-edit-fr], .cell.en'),
+    };
+    if (this.erasing(e)) { this.cur.erased = []; this.showHover(e); this.erase(pt); return; }
+    if (this.hover) this.hover.hidden = true;
+    const stroke = { v: 2, id: uid(), color: S.ink, points: [pt] };
+    this.cur.stroke = stroke;
+    this.strokes.push(stroke);
+    this.dot(this.ctx, stroke);
   },
   move(e) {
-    if (!this.cur || e.pointerId !== this.cur.pointerId) return;
-    e.preventDefault(); e.stopPropagation();
-    const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-    for (const point of events) this.cur.stroke.points.push(this.point(point));
-    this.redraw();
+    if (e.pointerType !== 'pen') return;
+    this.sawPen();
+    if (this.cur && e.pointerId === this.cur.pointerId) { e.preventDefault(); e.stopPropagation(); this.draw(e); return; }
+    if (!this.readonly && !(e.buttons & 1)) this.showHover(e); // hovering above the page
+  },
+  draw(e) {
+    const c = this.cur;
+    if (!c || e.pointerId !== c.pointerId) return;
+    let list = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+    if (!list.length) list = [e];
+    for (const ev of list) {
+      if (ev.timeStamp <= c.t) continue; // pointermove repeats samples pointerrawupdate already drew
+      c.t = ev.timeStamp;
+      if (!c.moved && Math.hypot(ev.clientX - c.x0, ev.clientY - c.y0) > 6) c.moved = true;
+      const pt = this.point(ev);
+      if (c.erased) { this.erase(pt); continue; }
+      c.stroke.points.push(pt);
+      this.piece(this.ctx, c.stroke, c.stroke.points.length - 1);
+      if (pt.y > this.rect.height - 120) this.extend(pt.y);
+    }
+    if (c.erased) this.showHover(e);
   },
   up(e) {
-    if (!this.cur || e.pointerId !== this.cur.pointerId) return;
+    const c = this.cur;
+    if (!c || e.pointerId !== c.pointerId) return;
     e.preventDefault(); e.stopPropagation();
     this.cur = null;
-    this.page.updated = Date.now();
-    Store.put(this.pid, 'page', this.page);
-  },
-  stroke(ctx, stroke, width, height) {
-    const points = stroke.points;
-    if (!points.length) return;
-    ctx.strokeStyle = stroke.color || prof(this.pid).color;
-    ctx.fillStyle = ctx.strokeStyle;
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    const size = p => 1.6 + p * 3.2;
-    ctx.beginPath();
-    ctx.arc(points[0].x * width, points[0].y * height, size(points[0].p) / 2, 0, Math.PI * 2);
-    ctx.fill();
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineWidth = size(points[i].p);
-      ctx.beginPath();
-      ctx.moveTo(points[i - 1].x * width, points[i - 1].y * height);
-      ctx.lineTo(points[i].x * width, points[i].y * height);
-      ctx.stroke();
+    if (c.moved) this.swallowUntil = performance.now() + 400;
+    if (c.erased) {
+      if (!c.erased.length) return;
+      this.record({ erased: c.erased });
+    } else if (!c.moved && c.target && e.type === 'pointerup') {
+      // A pen tap still presses buttons and opens boxes, the way it does in Samsung Notes, instead of leaving a dot.
+      this.remove(c.stroke.id); this.redraw();
+      if (c.target.matches('input')) c.target.focus();
+      return;
+    } else {
+      this.tail(this.ctx, c.stroke);
+      this.record({ added: c.stroke });
     }
+    this.save();
+  },
+  extend(y) { // like Samsung Notes, the page grows as you write near the bottom
+    const line = parseFloat(getComputedStyle(this.paper).getPropertyValue('--line')) || 56;
+    if (this.paper.offsetHeight >= y + line * 2) return;
+    this.paper.style.minHeight = `max(calc(100% - 8px), ${Math.ceil(y + line * 6)}px)`;
+  },
+  erase(pt) {
+    const strokes = this.strokes, x = pt.x * this.rect.width, y = pt.y;
+    let hit = false;
+    for (let i = strokes.length - 1; i >= 0; i--) {
+      if (!this.hits(strokes[i], x, y, 12)) continue;
+      const [stroke] = strokes.splice(i, 1);
+      stroke.id = stroke.id || uid();
+      this.cur.erased.push({ stroke, i });
+      hit = true;
+    }
+    if (hit) this.redraw();
+  },
+  hits(s, x, y, r) {
+    const at = this.at(s), pts = s.points;
+    for (let i = 0; i < pts.length; i++) {
+      const [bx, by] = at(pts[i]);
+      let dx = 0, dy = 0, ax = bx, ay = by;
+      if (i > 0) { [ax, ay] = at(pts[i - 1]); dx = bx - ax; dy = by - ay; }
+      const len = dx * dx + dy * dy;
+      const t = len ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len)) : 0;
+      if (Math.hypot(ax + t * dx - x, ay + t * dy - y) < r + this.size(pts[i].p) / 2) return true;
+    }
+    return false;
+  },
+  record(action) { this.done.push(action); this.undone = []; },
+  save() { const pg = this.page; if (!pg) return; pg.updated = Date.now(); Store.put(this.pid, 'page', pg); },
+  remove(id) { const s = this.strokes, i = s.findIndex(x => x.id === id); if (i >= 0) s.splice(i, 1); },
+  apply(a, back) {
+    const strokes = this.strokes;
+    if (a.added) { if (back) this.remove(a.added.id); else strokes.push(a.added); }
+    if (a.erased) {
+      if (back) for (let k = a.erased.length - 1; k >= 0; k--) strokes.splice(Math.min(a.erased[k].i, strokes.length), 0, a.erased[k].stroke);
+      else for (const { stroke } of a.erased) this.remove(stroke.id);
+    }
+    this.redraw(); this.save();
+  },
+  undo() { if (this.cur) return; const a = this.done.pop(); if (!a) return; this.apply(a, true); this.undone.push(a); },
+  redo() { if (this.cur) return; const a = this.undone.pop(); if (!a) return; this.apply(a, false); this.done.push(a); },
+  clear() {
+    const strokes = this.strokes;
+    if (this.cur || !strokes.length) return;
+    if (!confirm('Erase all handwriting on this page?')) return;
+    const erased = strokes.map((stroke, i) => { stroke.id = stroke.id || uid(); return { stroke, i }; }).reverse();
+    strokes.length = 0;
+    this.record({ erased });
+    this.redraw(); this.save();
+  },
+
+  // ---- drawing: a smooth curve through the midpoints of the samples, width from pen pressure ----
+  size(p) { return 1.4 + p * 3.4; },
+  at(s) { const { width, height } = this.rect; return s.v === 2 ? p => [p.x * width, p.y] : p => [p.x * width, p.y * height]; },
+  style(ctx, s) { ctx.strokeStyle = ctx.fillStyle = s.color || prof(this.pid).color; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; },
+  dot(ctx, s) {
+    const [x, y] = this.at(s)(s.points[0]);
+    this.style(ctx, s);
+    ctx.beginPath(); ctx.arc(x, y, this.size(s.points[0].p) / 2, 0, Math.PI * 2); ctx.fill();
+  },
+  piece(ctx, s, i) { // from halfway between samples i-2 and i-1, bending through i-1, to halfway to i
+    const pts = s.points, at = this.at(s), [px, py] = at(pts[i - 1]), [qx, qy] = at(pts[i]);
+    let sx = px, sy = py;
+    if (i > 1) { const [ox, oy] = at(pts[i - 2]); sx = (ox + px) / 2; sy = (oy + py) / 2; }
+    this.style(ctx, s);
+    ctx.lineWidth = this.size((pts[i - 1].p + pts[i].p) / 2);
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(px, py, (px + qx) / 2, (py + qy) / 2); ctx.stroke();
+  },
+  tail(ctx, s) {
+    const pts = s.points, n = pts.length;
+    if (n < 2) return;
+    const at = this.at(s), [px, py] = at(pts[n - 2]), [qx, qy] = at(pts[n - 1]);
+    this.style(ctx, s);
+    ctx.lineWidth = this.size(pts[n - 1].p);
+    ctx.beginPath(); ctx.moveTo((px + qx) / 2, (py + qy) / 2); ctx.lineTo(qx, qy); ctx.stroke();
   },
   redraw() {
-    if (!this.ctx || !this.canvas || !this.paper) return;
-    const rect = this.paper.getBoundingClientRect();
-    this.ctx.clearRect(0, 0, rect.width, rect.height);
-    for (const stroke of this.page.strokes || []) this.stroke(this.ctx, stroke, rect.width, rect.height);
-  },
-  undo() {
-    if (!this.page || !this.page.strokes || !this.page.strokes.length) return;
-    this.page.strokes.pop();
-    this.page.updated = Date.now();
-    this.redraw();
-    Store.put(this.pid, 'page', this.page);
-  },
-  clear() {
-    if (!this.page || !this.page.strokes || !this.page.strokes.length) return;
-    if (!confirm('Erase all handwriting on this page? This can’t be undone.')) return;
-    this.page.strokes = [];
-    this.page.updated = Date.now();
-    this.redraw();
-    Store.put(this.pid, 'page', this.page);
+    if (!this.ctx || !this.rect) return;
+    this.ctx.clearRect(0, 0, this.rect.width, this.rect.height);
+    for (const s of this.strokes) {
+      if (!s.points || !s.points.length) continue;
+      this.dot(this.ctx, s);
+      for (let i = 1; i < s.points.length; i++) this.piece(this.ctx, s, i);
+      this.tail(this.ctx, s);
+    }
   },
 };
 
@@ -644,12 +793,14 @@ function renderToolbarOnly() {
   const swatches = [...new Set([prof(S.me).color, ...INKS])].slice(0, 5);
   bar.innerHTML = `
     ${mine ? `
-      <button class="tool" aria-pressed="${S.inputMode === 'pen'}" data-act="mode-pen" aria-label="Write on page with S Pen">${I.pen}</button>
+      <button class="tool" aria-pressed="${S.inputMode === 'pen' && Ink.tool === 'pen'}" data-act="mode-pen" aria-label="Write on page with S Pen">${I.pen}</button>
+      <button class="tool" aria-pressed="${Ink.tool === 'eraser'}" data-act="eraser" aria-label="Eraser (or hold the S Pen button while writing)">${I.eraser}</button>
       <button class="tool" aria-pressed="${S.padOpen && S.inputMode === 'keys'}" data-act="mode-keys" aria-label="Type">${I.keyboard}</button>
       <span class="sep"></span>
       ${swatches.map(c => `<button class="swatch" style="background:${c}" aria-pressed="${c === S.ink}" data-ink="${c}" aria-label="Ink colour"></button>`).join('')}
       <span class="sep"></span>
-      <button class="tool" data-act="undo" aria-label="Undo last stroke">${I.undo}</button>
+      <button class="tool" data-act="undo" aria-label="Undo">${I.undo}</button>
+      <button class="tool" data-act="redo" aria-label="Redo">${I.redo}</button>
       <button class="tool" data-act="clear" aria-label="Erase handwriting on this page">${I.clear}</button>
       <span class="sep"></span>` : `<span class="readonly-note">Read only</span><span class="sep"></span>`}
     <button class="tool" aria-pressed="${S.covered}" data-act="cover" aria-label="Hide English to test yourself">${I.eye}</button>
@@ -688,6 +839,7 @@ function renderPageBody() {
     ${es.length ? '' : `<div class="empty-lines">    ${mine ? 'Write anywhere on this page with your S Pen.' : 'No lines on this page yet.'}</div>`}
     <div class="page-count">${es.length} ${es.length === 1 ? 'line' : 'lines'}</div>
     <canvas class="ink-layer" aria-hidden="true"></canvas>
+    <div class="pen-hover" hidden></div>
   `;
   Ink.mount(paper, page, pid, !mine);
   S.justAdded = null;
@@ -749,9 +901,11 @@ app.addEventListener('click', async ev => {
       break;
     }
     case 'pagemenu': pageMenu(t); break;
-    case 'mode-pen': toggleMode('pen'); break;
+    case 'mode-pen': Ink.tool = 'pen'; toggleMode('pen'); break;
+    case 'eraser': Ink.tool = Ink.tool === 'eraser' ? 'pen' : 'eraser'; renderToolbarOnly(); break;
     case 'mode-keys': toggleMode('keys'); break;
     case 'undo': Ink.undo(); break;
+    case 'redo': Ink.redo(); break;
     case 'clear': Ink.clear(); break;
     case 'addtyped': { const i = $('#typeFr'); if (i.value.trim()) { await addEntry(pageId, i.value); i.value = ''; i.focus(); } break; }
     case 'cover': S.covered = !S.covered; $('.paper').classList.toggle('covered', S.covered); renderToolbarOnly(); break;

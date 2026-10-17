@@ -72,6 +72,22 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .tool { min-width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; padding: 0 8px; flex: none; font-size: .85rem; font-weight: 600; }
 .tool[aria-pressed="true"] { background: var(--tool-active); }
 .tool.labeled { display: flex; align-items: center; gap: 6px; padding: 0 12px; }
+
+/* ---------- floating pen palette (drag it anywhere, tuck it away) ---------- */
+.palette {
+  position: fixed; z-index: 25; display: flex; align-items: center; gap: 2px; padding: 4px;
+  border-radius: 16px; background: var(--toolbar); color: var(--tool-icon);
+  box-shadow: 0 8px 26px rgba(0,0,0,.28); -webkit-user-select: none; user-select: none; max-width: calc(100vw - 16px);
+}
+.palette .grip { width: 26px; height: 44px; display: grid; place-items: center; opacity: .55; cursor: grab; touch-action: none; flex: none; }
+.palette .grip svg { width: 18px; height: 18px; }
+.palette .cur-color { width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid #fff; }
+.palette .colors-row { display: flex; align-items: center; }
+.palette .swatch { width: 28px; height: 28px; margin: 0 3px; }
+.palette .sep { margin: 0 4px; }
+.palette.min { padding: 4px; border-radius: 50%; }
+.palette.min .tool { position: relative; width: 52px; height: 52px; border-radius: 50%; touch-action: none; }
+.palette.min .dot { position: absolute; right: 7px; bottom: 7px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--toolbar); }
 .tool:disabled { opacity: .35; }
 .sep { width: 1px; height: 26px; background: #55575e; margin: 0 8px; flex: none; }
 .swatch { width: 32px; height: 32px; border-radius: 50%; margin: 0 4px; flex: none; border: 3px solid transparent; }
@@ -302,13 +318,15 @@ const I = {
   trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  grip: '<svg viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></g></svg>',
+  chevron: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
   minus: '<svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>',
 };
 
 // ======================================================================
 // Settings & helpers
 // ======================================================================
-const INKS = ['#e39b12', '#2f6fe4', '#e0559a', '#8b5cf6', '#159a6b', '#d9480f'];
+const INKS = ['#e39b12', '#2f6fe4', '#e0559a', '#8b5cf6', '#159a6b', '#e03131', '#d9480f'];
 const DEFAULT_PROFILES = [
   { id: 'p1', name: 'Pranjal', color: '#e39b12' },
   { id: 'p2', name: 'Friend', color: '#2f6fe4' },
@@ -763,16 +781,44 @@ const Sheet = {
     const fr = res.fr, check = await Judge.check(fr, list.slice(0, 3), res.guessed);
     const cur = this.ink.lines[line];
     if (token !== this.jtoken[line] || !cur || cur.fr !== fr) return;
-    if (check.v === 'wrong') cur.check = { why: check.why, en: list[0] }; else delete cur.check;
+    if (check.v === 'wrong') cur.check = { en: list[0], issues: check.issues, meaning: check.meaning }; else delete cur.check;
     this.marks(); this.save();
   },
   say(line) { // tap a pronunciation box: hear the word (or try reading it again)
     const res = this.ink.lines[line];
     if (!res || res.failed) { if (!this.readonly) { this.dirty.add(line); this.schedule(0); } return; }
     markPlaying('ink:' + line); Voice.speak(res.fr, () => markPlaying(null));
-    if (res.check) toast(res.check.why === 'spelling'
-      ? `“${res.fr}” isn’t in the French dictionary. Check the spelling.`
-      : `“${res.fr}” doesn’t seem to mean “${res.check.en}”. Check the French word.`);
+    if (res.check) toast(this.explain(res), 'OK', () => { });
+  },
+  explain(res) { // what's wrong, with the correction: "Spelling: “merc” → “merci”"
+    const c = res.check, parts = [];
+    if (c.why === 'spelling') parts.push(`“${res.fr}” isn’t in the French dictionary. Check the spelling.`); // saved by an older version
+    if (c.why === 'meaning') parts.push(`“${res.fr}” doesn’t seem to mean “${c.en}”.`);
+    for (const i of c.issues || []) parts.push(`${i.kind}: “${i.word}”${i.fix ? ` → “${i.fix}”` : ''}`);
+    if (c.meaning) parts.push(c.meaning.translated
+      ? `Meaning: this reads like “${c.meaning.translated}”, not “${c.en}”.`
+      : `Meaning: “${res.fr}” doesn’t seem to mean “${c.en}”.`);
+    return parts.join('   •   ');
+  },
+  flags(line, res, b) { // highlighter boxes: just the wrong words when they can be matched to your ink, else all of it
+    const c = res.check, L = this.L, whole = [{ minX: b.minX, maxX: b.maxX }];
+    let boxes = whole;
+    if (c.issues && c.issues.length && !c.meaning && !c.why) {
+      // split the French ink into words by the gaps between strokes
+      const W = this.W, words = [], spans = this.ink.strokes.filter(s => s.r === 'fr' && s.l === line)
+        .map(s => { const v = this.span(s); return [v[3] * W, v[4] * W]; }).sort((p, q) => p[0] - q[0]);
+      for (const [a, z] of spans) {
+        const last = words[words.length - 1];
+        if (last && a <= last.maxX + L * 0.28) last.maxX = Math.max(last.maxX, z); else words.push({ minX: a, maxX: z });
+      }
+      const text = [...res.fr.matchAll(/\S+/g)].map(m => ({ from: m.index, to: m.index + m[0].length }));
+      if (words.length === text.length) {
+        const hit = new Set();
+        for (const i of c.issues) text.forEach((t, k) => { if (t.from < i.to && i.from < t.to) hit.add(k); });
+        if (hit.size) boxes = [...hit].map(k => words[k]);
+      }
+    }
+    return boxes.map(w => `<div class="ink-flag" style="left:${w.minX - 6}px;top:${line * L + 6}px;width:${w.maxX - w.minX + 12}px;height:${L - 8}px"></div>`).join('');
   },
   marks() { // the arrow after each word and the locked pronunciation box under it
     if (!this.marksEl || !this.rect) return;
@@ -784,8 +830,7 @@ const Sheet = {
       const b = this.bounds(l);
       const label = busy ? '…' : res.failed ? '?' : (res.guessed ? '≈ ' : '') + (res.sound || res.fr);
       const title = busy ? 'Reading…' : res.failed ? 'Couldn’t read this word. Tap to try again.' : res.fr + (res.ipa ? `  /${res.ipa}/` : '');
-      if (!busy && res.check) // highlighter over a French word that doesn't look right for the English
-        html += `<div class="ink-flag" style="left:${b.minX - 6}px;top:${l * L + 6}px;width:${b.maxX - b.minX + 12}px;height:${L - 8}px"></div>`;
+      if (!busy && res.check) html += this.flags(l, res, b); // highlighter over what doesn't look right
       html += `<div class="ink-arrow" style="--c:${b.c};left:${b.maxX + ARROW_GAP}px;top:${l * L}px;height:${L}px">→</div>
         <button class="ink-box" data-ink-line="${l}" style="--c:${b.c};left:${b.minX}px;top:${(l + 1) * L}px" title="${esc(title)}"
           aria-label="${esc(busy ? 'Reading' : res.failed ? 'Couldn’t read, tap to retry' : 'Hear ' + res.fr + ', sounds like ' + label)}">${LOCK}${esc(label)}</button>`;
@@ -1136,10 +1181,14 @@ async function readHandwriting(ink, width, height, language) {
   return null;
 }
 
-// Does the French word fit the English you wrote? Checked against English Wiktionary two ways: the French
-// word's own meanings (following "plural of …" / "inflection of …" back to the main word), and the French
-// translations listed for the English word. It only answers 'wrong' when it's fairly sure; when it can't
-// tell (offline, a phrase the dictionary doesn't have), it says 'unknown' and nothing gets highlighted.
+// Is the French right, given the English you wrote? Nothing is ever corrected; it only reports.
+//  • Spelling and grammar, for words and whole sentences: LanguageTool's free public checker.
+//  • Meaning of a single word: English Wiktionary, two ways: the word's own meanings (following
+//    "plural of …" / "inflection of …" back to the main word) and the English word's French translations.
+//  • Meaning of a sentence: a free translator (MyMemory) turns the French into English, and that's
+//    compared with yours. It's rough, so it only complains when the two share almost nothing.
+// It only answers 'wrong' when it's fairly sure; when it can't tell (offline, busy, a phrase nobody
+// knows), it says 'unknown' and nothing gets highlighted.
 const Judge = {
   cache: new Map(),
   norm(s) { return String(s).toLowerCase().replace(/’/g, "'").replace(/[^\p{L}\p{N}' -]+/gu, ' ').replace(/\s+/g, ' ').trim(); },
@@ -1152,27 +1201,95 @@ const Judge = {
     // what you wrote appears as whole words inside a short meaning: "eat" in "eat a meal"
     return a.length <= 6 && b.length <= 3 && (' ' + a.join(' ') + ' ').includes(' ' + b.join(' ') + ' ');
   },
+  // → { v: 'ok' | 'wrong' | 'unknown', issues: [{ from, to, word, kind, fix }], meaning: { translated } | null }
   async check(fr, ens, notInDictionary) {
-    const key = this.norm(fr) + '|' + ens.map(e => this.norm(e)).join('/') + '|' + !!notInDictionary;
+    fr = String(fr).trim();
+    const key = fr + '|' + ens.map(e => this.norm(e)).join('/') + '|' + !!notInDictionary;
     if (this.cache.has(key)) return this.cache.get(key);
-    const saved = LS.get('judge:' + key, null); // remembered on this tablet, so Wiktionary isn't asked twice
+    const saved = LS.get('judge2:' + key, null); // remembered on this tablet, so nobody is asked twice
     if (saved) { this.cache.set(key, saved); return saved; }
     let out = { v: 'unknown' };
-    try { out = await this.decide(this.norm(fr), ens.map(e => this.core(this.norm(e))).filter(Boolean), notInDictionary); } catch (e) { }
-    if (out.v !== 'unknown') { this.cache.set(key, out); LS.set('judge:' + key, out); }
+    try { out = await this.decide(fr, ens.map(e => this.core(this.norm(e))).filter(Boolean), notInDictionary); } catch (e) { }
+    if (out.v !== 'unknown') { this.cache.set(key, out); LS.set('judge2:' + key, out); }
     return out;
   },
   defsCache: new Map(),
   async decide(fr, mine, notInDictionary) {
-    if (notInDictionary) return { v: 'wrong', why: 'spelling' }; // French Wiktionary doesn't know the word
     if (!fr || !mine.length) return { v: 'unknown' };
+    const single = !/\s/.test(fr);
+    const [found, meaning] = await Promise.all([
+      this.grammar(fr),
+      single ? this.wordMeaning(this.norm(fr), mine) : this.sentenceMeaning(fr, mine),
+    ]);
+    let issues = found;
+    // LanguageTool unreachable: fall back to French Wiktionary not knowing a single word
+    if (!issues && single && notInDictionary) issues = [{ from: 0, to: fr.length, word: fr, kind: 'Spelling', fix: '' }];
+    if (issues) for (const i of issues) i.fix = await this.bestFix(i, single ? mine : []);
+    if ((issues && issues.length) || meaning === 'wrong' || (meaning && meaning.translated))
+      return { v: 'wrong', issues: issues || [], meaning: meaning === 'wrong' ? {} : (meaning && meaning.translated ? meaning : null) };
+    if (!found || meaning === 'unknown') return { v: 'unknown' };
+    return { v: 'ok' };
+  },
+  async grammar(text) { // spelling and grammar mistakes, ignoring capitals and punctuation
+    try {
+      const r = await fetch('https://api.languagetool.org/v2/check', {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ text, language: 'fr' }),
+      });
+      if (!r.ok) return null;
+      const j = await r.json();
+      return (j.matches || [])
+        .filter(m => !['CASING', 'TYPOGRAPHY', 'PUNCTUATION', 'STYLE', 'REDUNDANCY'].includes(m.rule && m.rule.category && m.rule.category.id))
+        .map(m => ({
+          from: m.offset, to: m.offset + m.length, word: text.slice(m.offset, m.offset + m.length),
+          kind: m.rule.issueType === 'misspelling' || m.rule.category.id === 'TYPOS' ? 'Spelling' : 'Grammar',
+          options: (m.replacements || []).slice(0, 8).map(x => x.value),
+        }));
+    } catch (e) { return null; }
+  },
+  async bestFix(issue, mine) { // the suggestion closest to what you wrote; for a single word, one that means your English
+    const opts = (issue.options || []).filter(Boolean);
+    delete issue.options;
+    if (!opts.length) return '';
+    const near = [...opts].sort((a, b) => editDistance(issue.word.toLowerCase(), a.toLowerCase()) - editDistance(issue.word.toLowerCase(), b.toLowerCase()));
+    if (mine.length) for (const o of near.slice(0, 3)) {
+      const meanings = await this.meanings(this.norm(o)); // just the word's own meanings: keeps requests low
+      if (meanings && mine.some(m => meanings.some(g => this.same(g, m)))) return o;
+    }
+    return near[0];
+  },
+  async wordMeaning(fr, mine) { // 'ok' | 'wrong' | 'unknown'
     const meanings = await this.meanings(fr);
-    if (meanings === null) return { v: 'unknown' };
-    if (mine.some(m => meanings.some(g => this.same(g, m)))) return { v: 'ok' };
+    if (meanings === null) return 'unknown';
+    if (mine.some(m => meanings.some(g => this.same(g, m)))) return 'ok';
     const listed = await this.translatesTo(mine[0], fr);
-    if (listed) return { v: 'ok' };
-    if (!meanings.length || listed === null) return { v: 'unknown' };
-    return { v: 'wrong', why: 'meaning' };
+    if (listed) return 'ok';
+    if (!meanings.length || listed === null) return 'unknown';
+    return 'wrong';
+  },
+  async sentenceMeaning(fr, mine) { // 'ok' | 'unknown' | { translated } when it seems to say something else
+    let texts;
+    try {
+      const r = await fetch('https://api.mymemory.translated.net/get?langpair=fr|en&q=' + encodeURIComponent(fr));
+      if (!r.ok) return 'unknown';
+      const j = await r.json();
+      if (String(j.responseStatus) !== '200') return 'unknown'; // daily limit reached, etc.
+      const decode = s => new DOMParser().parseFromString(s, 'text/html').body.textContent;
+      texts = [j.responseData && j.responseData.translatedText, ...(j.matches || []).map(m => m.translation)].filter(Boolean).map(decode).slice(0, 6);
+    } catch (e) { return 'unknown'; }
+    if (!texts.length) return 'unknown';
+    return texts.some(t => mine.some(m => this.similar(t, m))) ? 'ok' : { translated: texts[0] };
+  },
+  words(s) {
+    s = this.norm(s).replace(/'m\b/g, ' am').replace(/'re\b/g, ' are').replace(/n't\b/g, ' not').replace(/'s\b/g, ' is').replace(/'ll\b/g, ' will').replace(/'ve\b/g, ' have');
+    return s.split(' ').filter(Boolean).map(w => w.replace(/(ing|ed)$/, '').replace(/(ies)$/, 'y').replace(/s$/, '')).filter(Boolean);
+  },
+  similar(translation, mine) { // do they share at least half of your meaningful words?
+    const skip = new Set(['a', 'an', 'the', 'to', 'of', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'is', 'am', 'are', 'be', 'wa', 'were', 'do', 'doe', 'did', 'in', 'on', 'at', 'for', 'with', 'and', 'or', 'my', 'your', 'his', 'her', 'our', 'their', 'thi', 'that', 'will', 'have', 'ha']);
+    const t = new Set(this.words(translation)), all = this.words(mine);
+    const key = all.filter(w => !skip.has(w)), use = key.length ? key : all;
+    if (!use.length) return true;
+    return use.filter(w => t.has(w)).length / use.length >= 0.5;
   },
   async definitions(word) { // the French-language definitions on English Wiktionary, as plain text
     if (this.defsCache.has(word)) return this.defsCache.get(word);
@@ -1215,6 +1332,15 @@ const Judge = {
     return reached ? false : null;
   },
 };
+
+function editDistance(a, b) { // Levenshtein: how many letters to change to turn a into b
+  const d = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = d[0]; d[0] = i;
+    for (let j = 1; j <= b.length; j++) { const t = d[j]; d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = t; }
+  }
+  return d[b.length];
+}
 
 // "que --> than" or "moi = me" written (or typed) on one line
 const ARROW = /\s*(?:[-–—=]+\s*>|→|⟶|➔|➜|=)\s*/;
@@ -1350,18 +1476,82 @@ function renderPage() {
       <section class="ink-sheet" aria-label="Handwriting"></section>
     </div></main>
     ${mine && S.padOpen ? '<section class="dock"></section>' : ''}
+    ${mine ? '<div class="palette" role="toolbar" aria-label="Pen tools"></div>' : ''}
   `;
   renderToolbarOnly();
   renderPageBody();
   Zoom.mount($('.desk'));
   Sheet.mount($('.ink-sheet'), pid, pageId, !mine);
-  if (mine) renderDock();
+  if (mine) { renderDock(); Palette.mount($('.palette')); }
 }
+
+// ---- floating pen palette: the tools you use while writing, next to your hand instead of up top ----
+const Palette = {
+  pos: LS.get('palette', null), open: LS.get('paletteOpen', true), colors: false, drag: null, noClick: false,
+  render() {
+    const el = $('.palette'); if (!el) return;
+    const t = Sheet.tool, btn = (act, on, icon, label) =>
+      `<button class="tool" data-act="${act}" aria-pressed="${on}" aria-label="${label}" title="${label}">${icon}</button>`;
+    if (!this.open) { // tucked away: one round button showing the current tool and colour
+      const icon = { free: I.scribble, eraser: I.eraser, select: I.select, addline: I.addline }[t] || I.pen;
+      el.className = 'palette min';
+      el.innerHTML = `<button class="tool" data-act="palette-open" aria-label="Show pen tools" title="Pen tools (drag to move)">${icon}<span class="dot" style="background:${S.ink}"></span></button>`;
+    } else {
+      const swatches = [...new Set([prof(S.me).color, ...INKS])].slice(0, 6);
+      el.className = 'palette';
+      el.innerHTML = `<span class="grip" title="Drag to move">${I.grip}</span>
+        ${btn('mode-pen', S.inputMode === 'pen' && t === 'pen', I.pen, 'French pen')}
+        ${btn('freepen', t === 'free', I.scribble, 'Free pen')}
+        ${btn('select', t === 'select', I.select, 'Select and move')}
+        ${btn('addline', t === 'addline', I.addline, 'Add line')}
+        ${btn('eraser', t === 'eraser', I.eraser, 'Eraser')}
+        <button class="tool" data-act="palette-colors" aria-expanded="${this.colors}" aria-label="Ink colour" title="Ink colour"><span class="cur-color" style="background:${S.ink}"></span></button>
+        ${this.colors ? `<span class="colors-row">${swatches.map(c => `<button class="swatch" style="background:${c}" aria-pressed="${c === S.ink}" data-ink="${c}" aria-label="Ink colour"></button>`).join('')}</span>` : ''}
+        <span class="sep"></span>
+        ${btn('undo', false, I.undo, 'Undo')}${btn('redo', false, I.redo, 'Redo')}
+        <button class="tool" data-act="palette-min" aria-label="Tuck the pen tools away" title="Tuck away">${I.chevron}</button>`;
+    }
+    this.place();
+  },
+  place() { // keep it on screen; it starts at the bottom right, near your writing hand
+    const el = $('.palette'); if (!el) return;
+    const w = el.offsetWidth, h = el.offsetHeight, p = this.pos || { x: innerWidth - w - 20, y: innerHeight - h - 28 };
+    el.style.left = Math.max(8, Math.min(p.x, innerWidth - w - 8)) + 'px';
+    el.style.top = Math.max(8, Math.min(p.y, innerHeight - h - 8)) + 'px';
+  },
+  mount(el) {
+    // drag by the handle (or the tucked-away button) with a finger or the pen
+    el.addEventListener('pointerdown', e => {
+      if (!e.target.closest('.grip') && !(el.classList.contains('min') && e.target.closest('button'))) return;
+      const r = el.getBoundingClientRect();
+      this.drag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top, x0: e.clientX, y0: e.clientY, moved: false };
+      try { el.setPointerCapture(e.pointerId); } catch (err) { }
+    });
+    el.addEventListener('pointermove', e => {
+      const d = this.drag; if (!d || e.pointerId !== d.id) return;
+      if (!d.moved && Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 6) return;
+      d.moved = true;
+      this.pos = { x: e.clientX - d.dx, y: e.clientY - d.dy };
+      this.place();
+    });
+    const end = e => {
+      const d = this.drag; if (!d || e.pointerId !== d.id) return;
+      this.drag = null;
+      if (d.moved) { LS.set('palette', this.pos); this.noClick = true; setTimeout(() => { this.noClick = false; }, 400); }
+    };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+    el.addEventListener('click', e => { if (this.noClick) { e.preventDefault(); e.stopPropagation(); this.noClick = false; } }, true); // a drag isn't a tap
+    this.render();
+  },
+  toggle(open) { this.open = open; this.colors = false; LS.set('paletteOpen', open); this.render(); },
+};
+window.addEventListener('resize', () => Palette.place());
 
 function renderToolbarOnly() {
   const bar = $('.toolbar'); if (!bar) return;
   const { pid, pageId } = S.route, mine = pid === S.me;
-  const swatches = [...new Set([prof(S.me).color, ...INKS])].slice(0, 5);
+  const swatches = [...new Set([prof(S.me).color, ...INKS])].slice(0, 6);
   bar.innerHTML = `
     ${mine ? `
       <button class="tool" aria-pressed="${S.inputMode === 'pen' && Sheet.tool === 'pen'}" data-act="mode-pen" aria-label="French pen: words are read and get a pronunciation">${I.pen}</button>
@@ -1385,6 +1575,7 @@ function renderToolbarOnly() {
     <button class="tool" data-act="zoomreset" aria-label="Reset zoom to 100%">${Math.round(Zoom.z * 100)}%</button>
     <button class="tool" data-act="zoomin" aria-label="Zoom in">${I.plus}</button>
   `;
+  Palette.render(); // the floating palette shows the same tool and colour
 }
 
 function rowHTML(e, mine) {
@@ -1467,7 +1658,7 @@ app.addEventListener('click', async ev => {
   if (t.dataset.tab) { S.tab = t.dataset.tab; S.query = ''; go('#/' + t.dataset.tab); return; }
   if (t.dataset.deletePage) { deletePage(S.tab || S.me, t.dataset.deletePage); return; }
   if (t.dataset.open) { go(`#/${S.tab || S.me}/${t.dataset.open}`); return; }
-  if (t.dataset.ink) { S.ink = t.dataset.ink; LS.set('ink', S.ink); document.documentElement.style.setProperty('--ink', S.ink); renderToolbarOnly(); return; }
+  if (t.dataset.ink) { S.ink = t.dataset.ink; LS.set('ink', S.ink); document.documentElement.style.setProperty('--ink', S.ink); Palette.colors = false; renderToolbarOnly(); return; }
   const row = t.closest('.row');
   if (t.dataset.inkLine !== undefined) { Sheet.say(+t.dataset.inkLine); return; }
   if (row && t.matches('[data-speak]')) {
@@ -1490,6 +1681,9 @@ app.addEventListener('click', async ev => {
     case 'mode-pen': Sheet.setTool('pen'); toggleMode('pen'); break;
     case 'freepen': Sheet.setTool(Sheet.tool === 'free' ? 'pen' : 'free'); renderToolbarOnly(); break;
     case 'eraser': Sheet.setTool(Sheet.tool === 'eraser' ? 'pen' : 'eraser'); renderToolbarOnly(); break;
+    case 'palette-open': Palette.toggle(true); break;
+    case 'palette-min': Palette.toggle(false); break;
+    case 'palette-colors': Palette.colors = !Palette.colors; Palette.render(); break;
     case 'addline':
       Sheet.setTool(Sheet.tool === 'addline' ? 'pen' : 'addline'); renderToolbarOnly();
       if (Sheet.tool === 'addline') toast('Tap the line where you want to add a new line.');

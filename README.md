@@ -31,6 +31,10 @@ English-style pronunciation (from Wiktionary) that you can tap to hear in a Fren
 
 ## How to use it
 
+- **Floating pen palette**: the tools you use while writing (French pen, Free, Select, Add line, eraser, ink
+  colour, undo, redo) also sit in a small dark bar at the bottom right, so you don't have to reach for the top.
+  Drag it anywhere by its ⋮⋮ handle; it stays where you put it. Tap ⌄ to tuck it into one round button, and
+  tap that button to bring it back (drag the button to move it too).
 - **Write a French word on any line** of the page with the S Pen. Your handwriting stays as you wrote it.
   The page never ends: keep scrolling down and more ruled lines appear.
 - **Pause** for a moment and the line is read: an arrow appears right after your word, and a locked box on
@@ -41,11 +45,16 @@ English-style pronunciation (from Wiktionary) that you can tap to hear in a Fren
   ```
 - **Write the English meaning by hand** after the arrow. It stays as ink; nothing is ever corrected.
   One word or phrase per line; anything you write to the left of the arrow counts as French.
-- **Mistake highlighter**: once you've written the English, the app checks the French word against it
-  (using English Wiktionary). If the French doesn't seem to mean what you wrote, or isn't a French word at all,
-  it gets a red **highlighter** mark. Tap its pronunciation box to see why, then fix it yourself (rub it out
-  and rewrite it). If the app can't tell, for example offline or for a phrase the dictionary doesn't
-  have, it doesn't highlight anything.
+- **Mistake highlighter**: once you've written the English, the app checks your French against it. Nothing is
+  ever corrected for you; mistakes just get a red **highlighter** mark. Tap the pronunciation box to see what's
+  wrong and the correction (e.g. `Spelling: "merc" → "merci"`, `Grammar: "content" → "contente"`), then fix it
+  yourself by rubbing it out and rewriting it.
+  - **Spelling and grammar**, for single words and whole sentences, come from LanguageTool's free checker.
+    In a sentence, just the wrong words are highlighted.
+  - **Meaning**: a single word is checked with English Wiktionary. A sentence is translated by a free translator
+    (MyMemory) and compared with your English; this is rough, so it only flags sentences that seem to say
+    something quite different.
+  - If the app can't tell (offline, or the free services are busy), it doesn't highlight anything.
 - **Tap a pronunciation box** to hear the word. A box with **?** couldn't be read; tap it to try again, or
   rub the word out and write it again. A small ≈ means Wiktionary didn't have the word and the pronunciation
   was guessed from French spelling rules.

@@ -44,8 +44,10 @@ English-style pronunciation (from Wiktionary) that you can tap to hear in a Fren
 - **Tap a pronunciation box** to hear the word. A box with **?** couldn't be read; tap it to try again, or
   rub the word out and write it again. A small ≈ means Wiktionary didn't have the word and the pronunciation
   was guessed from French spelling rules.
-- Only the S Pen writes; fingers scroll and tap. **Hold the S Pen button** (or pick the **eraser**) to rub
-  out strokes; the arrow and box update by themselves. **Undo / Redo** step through your writing, and
+- **Hold the S Pen button** while writing for plain freehand ink: notes, drawings, underlines. It's never
+  read and gets no arrow or pronunciation box.
+- Only the S Pen writes; fingers scroll and tap. Pick the **eraser** to rub out strokes; the arrow and box
+  update by themselves. **Undo / Redo** step through your writing, and
   **Clear** erases all handwriting on the page (Undo brings it back).
 - Tap **Type** to add a line with the keyboard instead (`que -> than` works there too). Typed lines sit at
   the top of the page, with an editable pronunciation box and a speaker.

@@ -459,9 +459,9 @@ const wordsOf = (pid, page) => !page ? [] : [
 // Handwriting on the page (S Pen)
 // Write a French word on any ruled line. When you pause, it's read: an arrow appears after it for the
 // English (which you write by hand and which stays as ink), and a locked box on the line below shows how
-// it sounds. Fingers scroll and tap; only the pen writes. Hold the S Pen button (or pick the eraser) to
-// rub out strokes.
-// Saved with the page as ink = { strokes: [{ id, c: colour, l: line, r: 'fr' | 'en', t0, pts: [x, y, pressure, ms, …] }],
+// it sounds. Fingers scroll and tap; only the pen writes. Hold the S Pen button to write freely (plain
+// ink, never read, no arrow or box). Pick the eraser to rub out strokes.
+// Saved with the page as ink = { strokes: [{ id, c: colour, l: line, r: 'fr' | 'en' | 'free', t0, pts: [x, y, pressure, ms, …] }],
 // lines: { [line]: { fr, sound, ipa, guessed } } }. x is a share of the page width, y is measured in ruled lines.
 // ======================================================================
 const ARROW_GAP = 10, ARROW_W = 34;
@@ -560,7 +560,8 @@ const Sheet = {
     this.nearTimer = setTimeout(() => this.el && this.el.classList.remove('pen-near'), 800);
   },
   away() { clearTimeout(this.nearTimer); this.el.classList.remove('pen-near'); this.hover.hidden = true; },
-  erasing(e) { return this.tool === 'eraser' || (e.buttons & 34) !== 0 || e.button === 5; }, // S Pen button or eraser end
+  erasing() { return this.tool === 'eraser'; },
+  free(e) { return (e.buttons & 34) !== 0 || e.button === 2 || e.button === 5; }, // S Pen button held: plain ink
   showHover(e) {
     const r = this.el.getBoundingClientRect();
     this.hover.hidden = false;
@@ -582,6 +583,7 @@ const Sheet = {
     if (this.erasing(e)) { this.cur.erased = []; this.showHover(e); this.erase(e); return; }
     this.hover.hidden = true;
     const s = { id: uid(), c: S.ink, t0: Date.now(), pts: [] };
+    if (this.free(e)) s.r = 'free';
     this.cur.stroke = s;
     this.addPoint(s, e);
     this.ink.strokes.push(s);
@@ -655,6 +657,7 @@ const Sheet = {
     for (let k = 0; k < s.pts.length; k += 4) { xs.push(s.pts[k]); ys.push(s.pts[k + 1]); }
     const sorted = [...ys].sort((a, b) => a - b);
     let line = Math.max(0, Math.floor(sorted[sorted.length >> 1]));
+    if (s.r === 'free') { s.l = line; return; } // written with the S Pen button held: just ink
     const W = this.W, minX = Math.min(...xs) * W, maxX = Math.max(...xs) * W;
     // an accent or the dot of an i, written high, belongs to the word on the line below it
     if ((sorted[sorted.length - 1] - sorted[0]) < 0.35 && maxX - minX < this.L * 0.35) {
@@ -1067,7 +1070,7 @@ function renderToolbarOnly() {
   bar.innerHTML = `
     ${mine ? `
       <button class="tool" aria-pressed="${S.inputMode === 'pen' && Sheet.tool === 'pen'}" data-act="mode-pen" aria-label="Write with the S Pen">${I.pen}</button>
-      <button class="tool" aria-pressed="${Sheet.tool === 'eraser'}" data-act="eraser" aria-label="Eraser (or hold the S Pen button while writing)">${I.eraser}</button>
+      <button class="tool" aria-pressed="${Sheet.tool === 'eraser'}" data-act="eraser" aria-label="Eraser">${I.eraser}</button>
       <button class="tool" aria-pressed="${S.padOpen && S.inputMode === 'keys'}" data-act="mode-keys" aria-label="Type">${I.keyboard}</button>
       <span class="sep"></span>
       ${swatches.map(c => `<button class="swatch" style="background:${c}" aria-pressed="${c === S.ink}" data-ink="${c}" aria-label="Ink colour"></button>`).join('')}

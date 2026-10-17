@@ -49,6 +49,8 @@ English-style pronunciation (from Wiktionary) that you can tap to hear in a Fren
   **Clear** erases all handwriting on the page (Undo brings it back).
 - Tap **Type** to add a line with the keyboard instead (`que -> than` works there too). Typed lines sit at
   the top of the page, with an editable pronunciation box and a speaker.
+- **Zoom** the page by pinching with two fingers, or with **−** / **+** in the toolbar (tap the % to go back
+  to 100%). Only the notebook page zooms, not the rest of the app, and you can keep writing while zoomed in.
 - `0.6×` slows the voice, `FR`/`CA` switches France and Canadian French. **▶** reads the whole page aloud.
 - **Eye button** blurs the English, typed or handwritten, so you can test yourself.
 - **⋮ on a typed line** lets you edit the French, fix the pronunciation, look it up again, or delete the line.

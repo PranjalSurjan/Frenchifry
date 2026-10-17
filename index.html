@@ -33,7 +33,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; }
+html, body { height: 100%; margin: 0; touch-action: pan-x pan-y; } /* pinching zooms only the page (see Zoom), not the app */
 body {
   font-family: var(--ui); color: var(--text); background: var(--desk);
   -webkit-tap-highlight-color: transparent;
@@ -78,7 +78,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .readonly-note { font-size: .85rem; padding: 0 10px; opacity: .8; white-space: nowrap; }
 
 /* ---------- desk + paper ---------- */
-.desk { flex: 1; overflow-y: auto; padding: 24px 16px 40px; -webkit-overflow-scrolling: touch; }
+.desk { flex: 1; overflow: auto; padding: 24px 16px 40px; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
 .paper {
   --pad-l: 96px; --pad-r: 28px;
   position: relative; max-width: 1180px; margin: 0 auto; min-height: calc(100% - 8px);
@@ -282,6 +282,7 @@ const I = {
   trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  minus: '<svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>',
 };
 
 // ======================================================================
@@ -466,7 +467,7 @@ const wordsOf = (pid, page) => !page ? [] : [
 const ARROW_GAP = 10, ARROW_W = 34;
 const LOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
 const Sheet = {
-  el: null, canvas: null, ctx: null, hover: null, marksEl: null, rect: null, L: 56, rows: 0, observer: null,
+  el: null, canvas: null, ctx: null, hover: null, marksEl: null, rect: null, L: 56, rows: 0, observer: null, z: 1, W: 1,
   pid: null, pageId: null, readonly: true, tool: 'pen', cur: null, done: [], undone: [],
   dirty: new Set(), busy: {}, token: {}, readTimer: null, saveTimer: null, nearTimer: null, swallowUntil: 0,
   get page() { return S.data[this.pid]?.pages[this.pageId]; },
@@ -506,15 +507,18 @@ const Sheet = {
     this.observer = new ResizeObserver(() => this.fit());
     this.observer.observe(el);
     if (desk) this.observer.observe(desk);
-    this.grow(); this.fit();
+    this.measure(); this.grow(); this.fit();
     if (this.dirty.size && !this.readTimer) this.schedule(0);
   },
-  screen() { const desk = $('.desk'); return Math.ceil((desk ? desk.clientHeight : 800) / this.L); },
+  screen() { const desk = $('.desk'); return Math.ceil((desk ? desk.clientHeight : 800) / this.z / this.L); },
+  // The page can be zoomed (CSS zoom on .paper): z is how much bigger it looks on screen and W is the
+  // page's own width. Ink is stored and drawn in page units, so it stays put at any zoom.
+  measure() { this.rect = this.el.getBoundingClientRect(); this.W = this.el.offsetWidth || 1; this.z = this.rect.width / this.W || 1; },
   // The page never ends: there's always at least a screenful of empty lines below your writing,
   // and scrolling near the bottom adds another screenful.
   grow(line = 0) {
     const desk = $('.desk'), screen = this.screen();
-    const fill = desk ? Math.ceil((desk.clientHeight - this.el.offsetTop) / this.L) : 0;
+    const fill = desk ? Math.ceil((desk.clientHeight / this.z - this.el.offsetTop) / this.L) : 0;
     let used = line + 1;
     for (const s of this.ink.strokes) used = Math.max(used, s.l + 2);
     const n = Math.max(12, fill + screen + this.extra, used + screen);
@@ -529,14 +533,14 @@ const Sheet = {
   fit() {
     if (!this.el) return;
     const desk = $('.desk'), d = window.devicePixelRatio || 1;
-    this.rect = this.el.getBoundingClientRect();
+    this.measure();
     // The canvas only covers what's on screen (it sticks to the top as you scroll and is redrawn),
     // so a very long page doesn't need a giant canvas.
-    const w = Math.round(this.rect.width), h = Math.min(desk ? desk.clientHeight : 800, Math.round(this.rect.height));
-    if (w !== this.cw || h !== this.ch) {
-      this.cw = w; this.ch = h;
+    const z = this.z, w = Math.round(this.W), h = Math.min(Math.ceil((desk ? desk.clientHeight : 800) / z), this.el.offsetHeight);
+    if (w !== this.cw || h !== this.ch || z !== this.cz) {
+      this.cw = w; this.ch = h; this.cz = z;
       this.canvas.style.height = h + 'px';
-      this.canvas.width = Math.round(w * d); this.canvas.height = Math.round(h * d);
+      this.canvas.width = Math.round(w * z * d); this.canvas.height = Math.round(h * z * d); // sharp at any zoom
     }
     this.redraw(); this.marks();
   },
@@ -561,7 +565,7 @@ const Sheet = {
     const r = this.el.getBoundingClientRect();
     this.hover.hidden = false;
     this.hover.classList.toggle('erase', this.erasing(e));
-    this.hover.style.transform = `translate(${e.clientX - r.left}px, ${e.clientY - r.top}px)`;
+    this.hover.style.transform = `translate(${(e.clientX - r.left) / this.z}px, ${(e.clientY - r.top) / this.z}px)`;
   },
   down(e) {
     if (e.pointerType !== 'pen') return;
@@ -572,8 +576,8 @@ const Sheet = {
     e.preventDefault(); e.stopPropagation();
     try { this.el.setPointerCapture(e.pointerId); } catch (err) { }
     clearTimeout(this.readTimer); this.readTimer = null; // still writing: wait before reading
-    this.rect = this.el.getBoundingClientRect();
-    if (this.canvas.getBoundingClientRect().top - this.rect.top !== this.viewTop) this.redraw(); // page scrolled since the last frame
+    this.measure();
+    if ((this.canvas.getBoundingClientRect().top - this.rect.top) / this.z !== this.viewTop) this.redraw(); // page scrolled since the last frame
     this.cur = { pointerId: e.pointerId, t: e.timeStamp, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, ts0: e.timeStamp, moved: false };
     if (this.erasing(e)) { this.cur.erased = []; this.showHover(e); this.erase(e); return; }
     this.hover.hidden = true;
@@ -592,7 +596,7 @@ const Sheet = {
   },
   addPoint(s, e) {
     const r = this.rect;
-    s.pts.push(Math.round((e.clientX - r.left) / r.width * 1e4) / 1e4, Math.round((e.clientY - r.top) / this.L * 1e3) / 1e3,
+    s.pts.push(Math.round((e.clientX - r.left) / r.width * 1e4) / 1e4, Math.round((e.clientY - r.top) / this.z / this.L * 1e3) / 1e3,
       Math.round((e.pressure || 0.5) * 100) / 100, Math.round(e.timeStamp - this.cur.ts0));
   },
   draw(e) {
@@ -613,7 +617,7 @@ const Sheet = {
       this.piece(c.stroke, c.stroke.pts.length / 4 - 1);
     }
     if (c.erased) this.showHover(e);
-    else if ((c.y - this.rect.top) / this.L > this.rows - 3) this.grow(Math.floor((c.y - this.rect.top) / this.L));
+    else { const line = (c.y - this.rect.top) / this.z / this.L; if (line > this.rows - 3) this.grow(Math.floor(line)); }
   },
   up(e) {
     const c = this.cur;
@@ -638,7 +642,7 @@ const Sheet = {
       for (let k = 0; k < s.pts.length; k += 4) { minX = Math.min(minX, s.pts[k]); maxX = Math.max(maxX, s.pts[k]); }
     }
     if (!c) return null;
-    const W = this.rect.width;
+    const W = this.W;
     return { minX: minX * W, maxX: maxX * W, c };
   },
   arrowAt(line) {
@@ -651,7 +655,7 @@ const Sheet = {
     for (let k = 0; k < s.pts.length; k += 4) { xs.push(s.pts[k]); ys.push(s.pts[k + 1]); }
     const sorted = [...ys].sort((a, b) => a - b);
     let line = Math.max(0, Math.floor(sorted[sorted.length >> 1]));
-    const W = this.rect.width, minX = Math.min(...xs) * W, maxX = Math.max(...xs) * W;
+    const W = this.W, minX = Math.min(...xs) * W, maxX = Math.max(...xs) * W;
     // an accent or the dot of an i, written high, belongs to the word on the line below it
     if ((sorted[sorted.length - 1] - sorted[0]) < 0.35 && maxX - minX < this.L * 0.35) {
       const below = this.bounds(line + 1);
@@ -682,7 +686,7 @@ const Sheet = {
     const token = this.token[line] = (this.token[line] || 0) + 1;
     if (!frs.length) { delete this.ink.lines[line]; delete this.busy[line]; this.marks(); this.save(); return; }
     this.busy[line] = true; this.marks();
-    const W = this.rect.width, L = this.L, t0 = Math.min(...frs.map(s => s.t0));
+    const W = this.W, L = this.L, t0 = Math.min(...frs.map(s => s.t0));
     let minX = Infinity; for (const s of frs) for (let k = 0; k < s.pts.length; k += 4) minX = Math.min(minX, s.pts[k] * W);
     const ink = frs.map(s => {
       const xs = [], ys = [], ts = [];
@@ -738,7 +742,7 @@ const Sheet = {
 
   // ---- eraser, undo, redo, clear ----
   erase(e) {
-    const r = this.rect, x = e.clientX - r.left, y = e.clientY - r.top, strokes = this.ink.strokes;
+    const r = this.rect, x = (e.clientX - r.left) / this.z, y = (e.clientY - r.top) / this.z, strokes = this.ink.strokes;
     let hit = false;
     for (let i = strokes.length - 1; i >= 0; i--) {
       if (!this.hits(strokes[i], x, y, 12)) continue;
@@ -784,7 +788,7 @@ const Sheet = {
 
   // ---- drawing: a smooth curve through the midpoints of the samples, width from pen pressure ----
   size(p) { return 1.4 + p * 3.4; },
-  px(s, i) { const k = i * 4; return [s.pts[k] * this.rect.width, s.pts[k + 1] * this.L, s.pts[k + 2]]; },
+  px(s, i) { const k = i * 4; return [s.pts[k] * this.W, s.pts[k + 1] * this.L, s.pts[k + 2]]; },
   style(s) {
     const c = this.ctx; c.strokeStyle = c.fillStyle = s.c || prof(this.pid).color; c.lineCap = 'round'; c.lineJoin = 'round';
     c.filter = S.covered && s.r === 'en' ? 'blur(6px)' : 'none'; // the eye button hides your English
@@ -809,9 +813,9 @@ const Sheet = {
   },
   redraw() {
     if (!this.ctx || !this.rect || !this.ch) return;
-    const c = this.ctx, d = window.devicePixelRatio || 1;
+    const c = this.ctx, d = (window.devicePixelRatio || 1) * this.z;
     // which slice of the page the sticky canvas is showing right now
-    const top = this.viewTop = this.canvas.getBoundingClientRect().top - this.el.getBoundingClientRect().top;
+    const top = this.viewTop = (this.canvas.getBoundingClientRect().top - this.el.getBoundingClientRect().top) / this.z;
     c.setTransform(d, 0, 0, d, 0, -top * d);
     c.filter = 'none';
     c.clearRect(0, top, this.cw, this.ch);
@@ -839,6 +843,60 @@ const Sheet = {
 };
 const inkLinesOf = page => Object.entries((page && page.ink && page.ink.lines) || {})
   .filter(([, v]) => v.fr).map(([l, v]) => ({ line: +l, ...v })).sort((a, b) => a.line - b.line);
+
+// ======================================================================
+// Zoom: pinch the page with two fingers (or use − / + in the toolbar). Only the notebook page zooms;
+// the rest of the app stays put. Remembered on this tablet.
+// ======================================================================
+const Zoom = {
+  z: LS.get('zoom', 1), MIN: 0.5, MAX: 3,
+  apply(fx, fy) { // keep the spot under (fx, fy) on screen still while zooming
+    const desk = $('.desk'), paper = $('.paper'); if (!desk || !paper) return;
+    const dr = desk.getBoundingClientRect();
+    if (fx == null) { fx = dr.left + desk.clientWidth / 2; fy = dr.top + desk.clientHeight / 2; }
+    const before = paper.getBoundingClientRect(), old = before.width / (paper.offsetWidth || 1) || 1;
+    const px = (fx - before.left) / old, py = (fy - before.top) / old; // that spot, in page units
+    this.size();
+    const after = paper.getBoundingClientRect();
+    desk.scrollLeft += after.left + px * this.z - fx;
+    desk.scrollTop += after.top + py * this.z - fy;
+  },
+  size() { // fix the page's own width, so zooming in makes it bigger instead of squeezing it to fit
+    const desk = $('.desk'), paper = $('.paper'); if (!desk || !paper) return;
+    paper.style.width = Math.min(1180, desk.clientWidth - 32) + 'px';
+    paper.style.zoom = this.z;
+  },
+  set(z, fx, fy, settle = true) {
+    this.z = Math.round(Math.min(this.MAX, Math.max(this.MIN, z)) * 100) / 100;
+    this.apply(fx, fy);
+    if (settle) this.settle();
+  },
+  settle() { // redraw the ink sharply for the new size once you've finished zooming
+    LS.set('zoom', this.z);
+    Sheet.fit(); Sheet.grow();
+    const b = $('[data-act="zoomreset"]'); if (b) b.textContent = Math.round(this.z * 100) + '%';
+  },
+  mount(desk) {
+    this.size();
+    let pinch = null;
+    const mid = (a, b) => [(a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2];
+    const gap = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+    desk.addEventListener('touchstart', e => {
+      const t = [...e.touches].filter(x => x.touchType !== 'stylus');
+      if (t.length === 2) pinch = { d: gap(t[0], t[1]), z: this.z };
+    }, { passive: true });
+    desk.addEventListener('touchmove', e => {
+      const t = [...e.touches].filter(x => x.touchType !== 'stylus');
+      if (!pinch || t.length !== 2) return;
+      if (e.cancelable) e.preventDefault(); // we're zooming, so the browser mustn't scroll at the same time
+      this.set(pinch.z * gap(t[0], t[1]) / pinch.d, ...mid(t[0], t[1]), false);
+    }, { passive: false });
+    const end = e => { if (pinch && e.touches.length < 2) { pinch = null; this.settle(); } };
+    desk.addEventListener('touchend', end);
+    desk.addEventListener('touchcancel', end);
+  },
+};
+window.addEventListener('resize', () => { if ($('.paper')) { Zoom.size(); Sheet.fit(); } });
 
 // Google's free handwriting reader (through /api/handwriting, or directly if that isn't deployed)
 async function readHandwriting(ink, width, height, language) {
@@ -997,6 +1055,7 @@ function renderPage() {
   `;
   renderToolbarOnly();
   renderPageBody();
+  Zoom.mount($('.desk'));
   Sheet.mount($('.ink-sheet'), pid, pageId, !mine);
   if (mine) renderDock();
 }
@@ -1021,6 +1080,10 @@ function renderToolbarOnly() {
     <button class="tool" data-act="playall" aria-label="${playing ? 'Stop' : 'Play every line'}">${playing ? I.stop : I.play}</button>
     <button class="tool" aria-pressed="${prefs.slow}" data-act="slow" aria-label="Slow speech">0.6×</button>
     <button class="tool" data-act="accent" aria-label="Switch accent">${prefs.accent === 'fr-CA' ? 'CA' : 'FR'}</button>
+    <span class="sep"></span>
+    <button class="tool" data-act="zoomout" aria-label="Zoom out">${I.minus}</button>
+    <button class="tool" data-act="zoomreset" aria-label="Reset zoom to 100%">${Math.round(Zoom.z * 100)}%</button>
+    <button class="tool" data-act="zoomin" aria-label="Zoom in">${I.plus}</button>
   `;
 }
 
@@ -1134,6 +1197,9 @@ app.addEventListener('click', async ev => {
     case 'cover': S.covered = !S.covered; $('.paper').classList.toggle('covered', S.covered); Sheet.redraw(); renderToolbarOnly(); break;
     case 'playall': playPage(pid, pageId); break;
     case 'slow': prefs.slow = !prefs.slow; savePrefs(); renderToolbarOnly(); break;
+    case 'zoomin': Zoom.set(Zoom.z * 1.25); break;
+    case 'zoomout': Zoom.set(Zoom.z / 1.25); break;
+    case 'zoomreset': Zoom.set(1); break;
     case 'accent': prefs.accent = prefs.accent === 'fr-CA' ? 'fr-FR' : 'fr-CA'; savePrefs(); renderToolbarOnly(); toast(prefs.accent === 'fr-CA' ? 'Canadian French voice' : 'France French voice'); break;
   }
 });

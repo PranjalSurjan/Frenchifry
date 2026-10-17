@@ -36,6 +36,7 @@ You type the English meaning yourself.
 - **Tap the sound spelling or the speaker** to hear it. `0.6×` slows the voice, `FR`/`CA` switches France and Canadian French.
 - **Eye button** blurs the English so you can test yourself; tap a line to reveal it.
 - **⋮ on a line** lets you edit the French, fix the sound spelling, look it up again, or delete the line.
+- **Trash button on one of your home-page cards** deletes that page and all its lines after confirmation.
 - Your friend's pages are on their tab at the top, read only.
 
 A small ≈ before a sound spelling means Wiktionary didn't have that word and the spelling was guessed

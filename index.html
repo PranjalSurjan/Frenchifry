@@ -159,7 +159,10 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .tab small { font-weight: 400; opacity: .7; }
 .search { width: 100%; height: 46px; border-radius: 23px; border: 0; background: var(--chip); padding: 0 18px; font-size: 1rem; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 22px; max-width: 1180px; margin: 0 auto; }
+.page-card { position: relative; min-width: 0; }
 .card { text-align: left; display: block; width: 100%; }
+.card-delete { position: absolute; z-index: 1; top: 8px; right: 8px; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: var(--chrome); color: var(--danger); box-shadow: 0 1px 5px rgba(0,0,0,.18); }
+.card-delete:active { background: var(--chip); }
 .thumb {
   aspect-ratio: 3 / 4; border-radius: 10px; position: relative; overflow: hidden; padding: 16px 12px 0 30px;
   background-color: var(--paper);
@@ -253,6 +256,7 @@ const I = {
   stop: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
   speaker: '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12"/></svg>',
   more: '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="19" r="1.3" fill="currentColor"/></svg>',
+  trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
 };
@@ -611,10 +615,13 @@ function renderHome() {
     <main class="desk">
       ${pages.length ? `<div class="grid">${pages.map(pg => {
         const es = entriesOf(pid, pg.id);
-        return `<button class="card" data-open="${pg.id}" style="--c:${p.color}">
-          <div class="thumb"><b>${esc(pg.title || 'Untitled')}</b>${es.slice(0, 7).map(e => `<span style="color:${e.color || p.color}">${esc(e.fr)}</span>`).join('')}</div>
-          <div class="card-meta"><strong>${esc(pg.title || 'Untitled')}</strong><small>${fmtDate(pg.created)} · ${es.length} ${es.length === 1 ? 'line' : 'lines'}</small></div>
-        </button>`;
+        return `<div class="page-card" style="--c:${p.color}">
+          ${mine ? `<button class="card-delete" data-delete-page="${pg.id}" aria-label="Delete page ${esc(pg.title || 'Untitled')}" title="Delete page">${I.trash}</button>` : ''}
+          <button class="card" data-open="${pg.id}">
+            <div class="thumb"><b>${esc(pg.title || 'Untitled')}</b>${es.slice(0, 7).map(e => `<span style="color:${e.color || p.color}">${esc(e.fr)}</span>`).join('')}</div>
+            <div class="card-meta"><strong>${esc(pg.title || 'Untitled')}</strong><small>${fmtDate(pg.created)} · ${es.length} ${es.length === 1 ? 'line' : 'lines'}</small></div>
+          </button>
+        </div>`;
       }).join('')}</div>` : `<div class="empty">${q ? `<b>Nothing matches “${esc(S.query)}”</b>Try a different word.` :
         mine ? '<b>No pages yet</b>Tap the pen button to start your first page.' : `<b>${esc(p.name)} hasn’t written anything yet</b>Their pages will show up here as they write.`}</div>`}
     </main>
@@ -747,6 +754,7 @@ app.addEventListener('click', async ev => {
   const { pid, pageId } = S.route;
 
   if (t.dataset.tab) { S.tab = t.dataset.tab; S.query = ''; go('#/' + t.dataset.tab); return; }
+  if (t.dataset.deletePage) { deletePage(S.tab || S.me, t.dataset.deletePage); return; }
   if (t.dataset.open) { go(`#/${S.tab || S.me}/${t.dataset.open}`); return; }
   if (t.dataset.ink) { S.ink = t.dataset.ink; LS.set('ink', S.ink); document.documentElement.style.setProperty('--ink', S.ink); renderToolbarOnly(); Pad.redraw(); return; }
   if (t.dataset.cand !== undefined) { await addEntry(pageId, t.dataset.cand); Pad.clear(); return; }
@@ -860,14 +868,18 @@ function rowMenu(id, anchor) {
 function pageMenu(anchor) {
   const { pid, pageId } = S.route, mine = pid === S.me;
   const items = [{ label: 'Settings', run: openSettings }];
-  if (mine) items.push({ label: 'Delete page', danger: true, run: () => {
-    const es = entriesOf(pid, pageId);
-    if (!confirm(`Delete this page and its ${es.length} lines? This can’t be undone.`)) return;
-    delete S.data[pid].pages[pageId]; es.forEach(e => delete S.data[pid].entries[e.id]);
-    Store.del(pid, ['page:' + pageId, ...es.map(e => 'entry:' + e.id)]);
-    go('#/' + pid); toast('Page deleted');
-  } });
+  if (mine) items.push({ label: 'Delete page', danger: true, run: () => deletePage(pid, pageId, true) });
   popover(anchor, items);
+}
+function deletePage(pid, pageId, returnHome = false) {
+  const page = S.data[pid].pages[pageId]; if (!page) return;
+  const es = entriesOf(pid, pageId);
+  if (!confirm(`Delete “${page.title || 'Untitled'}” and its ${es.length} ${es.length === 1 ? 'line' : 'lines'}? This can’t be undone.`)) return;
+  delete S.data[pid].pages[pageId]; es.forEach(e => delete S.data[pid].entries[e.id]);
+  Store.del(pid, ['page:' + pageId, ...es.map(e => 'entry:' + e.id)]);
+  if (returnHome) go('#/' + pid);
+  else { renderHome(); setStatus(); }
+  toast('Page deleted');
 }
 
 // ---------- toast ----------

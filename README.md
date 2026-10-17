@@ -32,6 +32,7 @@ English-style pronunciation (from Wiktionary) that you can tap to hear in a Fren
 ## How to use it
 
 - **Write a French word on any line** of the page with the S Pen. Your handwriting stays as you wrote it.
+  The page never ends: keep scrolling down and more ruled lines appear.
 - **Pause** for a moment and the line is read: an arrow appears right after your word, and a locked box on
   the line below shows how it sounds:
   ```

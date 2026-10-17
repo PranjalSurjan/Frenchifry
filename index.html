@@ -136,7 +136,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 /* ---------- handwriting sheet: write French on any ruled line ---------- */
 .ink-sheet { position: relative; flex: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .ink-sheet.pen-near { touch-action: none; } /* while the S Pen hovers, the nib's first touch can't start a scroll */
-.ink-sheet .ink-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.ink-sheet .ink-layer { position: sticky; top: 0; display: block; width: 100%; pointer-events: none; } /* covers just the screen */
 .ink-marks { position: absolute; inset: 0; pointer-events: none; }
 .ink-arrow {
   position: absolute; display: flex; align-items: flex-end; padding-bottom: 6px;
@@ -473,10 +473,10 @@ const Sheet = {
   get ink() { const pg = this.page; return pg ? (pg.ink = pg.ink || { strokes: [], lines: {} }) : { strokes: [], lines: {} }; },
   mount(el, pid, pageId, readonly) {
     if (pid !== this.pid || pageId !== this.pageId) {
-      this.done = []; this.undone = []; this.cur = null; this.dirty.clear(); this.busy = {};
+      this.done = []; this.undone = []; this.cur = null; this.dirty.clear(); this.busy = {}; this.extra = 0;
       clearTimeout(this.readTimer); this.readTimer = null;
     }
-    this.el = el; this.pid = pid; this.pageId = pageId; this.readonly = readonly; this.rows = 0;
+    this.el = el; this.pid = pid; this.pageId = pageId; this.readonly = readonly; this.rows = 0; this.cw = this.ch = 0;
     el.innerHTML = `<canvas class="ink-layer" aria-hidden="true"></canvas><div class="ink-marks"></div>
       ${readonly ? '' : '<div class="sheet-hint">Write a French word on any line with your S Pen. Pause, and an arrow appears for the meaning, with how it sounds underneath.</div>'}
       <div class="pen-hover" hidden></div>`;
@@ -500,25 +500,44 @@ const Sheet = {
       if (performance.now() < this.swallowUntil) { e.preventDefault(); e.stopPropagation(); } // a stroke that ended on a box
     }, true);
     this.L = parseFloat(getComputedStyle(el).getPropertyValue('--line')) || 56;
+    const desk = $('.desk');
+    if (desk) desk.addEventListener('scroll', () => this.scrolled(), { passive: true });
     if (this.observer) this.observer.disconnect();
     this.observer = new ResizeObserver(() => this.fit());
     this.observer.observe(el);
+    if (desk) this.observer.observe(desk);
     this.grow(); this.fit();
     if (this.dirty.size && !this.readTimer) this.schedule(0);
   },
-  grow(line = 0) { // enough ruled lines to fill the screen, plus room below the lowest writing
-    const desk = $('.desk');
+  screen() { const desk = $('.desk'); return Math.ceil((desk ? desk.clientHeight : 800) / this.L); },
+  // The page never ends: there's always at least a screenful of empty lines below your writing,
+  // and scrolling near the bottom adds another screenful.
+  grow(line = 0) {
+    const desk = $('.desk'), screen = this.screen();
     const fill = desk ? Math.ceil((desk.clientHeight - this.el.offsetTop) / this.L) : 0;
     let used = line + 1;
     for (const s of this.ink.strokes) used = Math.max(used, s.l + 2);
-    const n = Math.max(12, fill, used + 3);
-    if (n !== this.rows) { this.rows = n; this.el.style.height = n * this.L + 'px'; }
+    const n = Math.max(12, fill + screen + this.extra, used + screen);
+    if (n > this.rows) { this.rows = n; this.el.style.height = n * this.L + 'px'; }
+  },
+  scrolled() { // Chrome sends scroll events at most once per frame
+    const desk = $('.desk');
+    if (!desk || !this.el || !this.el.isConnected) return;
+    if (desk.scrollTop + desk.clientHeight * 2 > desk.scrollHeight) { this.extra += this.screen(); this.grow(); }
+    this.redraw();
   },
   fit() {
     if (!this.el) return;
-    const r = this.rect = this.el.getBoundingClientRect(), d = window.devicePixelRatio || 1;
-    this.canvas.width = Math.round(r.width * d); this.canvas.height = Math.round(r.height * d);
-    this.ctx.setTransform(d, 0, 0, d, 0, 0);
+    const desk = $('.desk'), d = window.devicePixelRatio || 1;
+    this.rect = this.el.getBoundingClientRect();
+    // The canvas only covers what's on screen (it sticks to the top as you scroll and is redrawn),
+    // so a very long page doesn't need a giant canvas.
+    const w = Math.round(this.rect.width), h = Math.min(desk ? desk.clientHeight : 800, Math.round(this.rect.height));
+    if (w !== this.cw || h !== this.ch) {
+      this.cw = w; this.ch = h;
+      this.canvas.style.height = h + 'px';
+      this.canvas.width = Math.round(w * d); this.canvas.height = Math.round(h * d);
+    }
     this.redraw(); this.marks();
   },
   busyNow() { return !!(this.cur || this.readTimer || this.saveTimer || Object.keys(this.busy).length); },
@@ -554,6 +573,7 @@ const Sheet = {
     try { this.el.setPointerCapture(e.pointerId); } catch (err) { }
     clearTimeout(this.readTimer); this.readTimer = null; // still writing: wait before reading
     this.rect = this.el.getBoundingClientRect();
+    if (this.canvas.getBoundingClientRect().top - this.rect.top !== this.viewTop) this.redraw(); // page scrolled since the last frame
     this.cur = { pointerId: e.pointerId, t: e.timeStamp, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, ts0: e.timeStamp, moved: false };
     if (this.erasing(e)) { this.cur.erased = []; this.showHover(e); this.erase(e); return; }
     this.hover.hidden = true;
@@ -788,16 +808,33 @@ const Sheet = {
     c.beginPath(); c.moveTo((ax + bx) / 2, (ay + by) / 2); c.lineTo(bx, by); c.stroke();
   },
   redraw() {
-    if (!this.ctx || !this.rect) return;
-    this.ctx.filter = 'none';
-    this.ctx.clearRect(0, 0, this.rect.width, this.rect.height);
+    if (!this.ctx || !this.rect || !this.ch) return;
+    const c = this.ctx, d = window.devicePixelRatio || 1;
+    // which slice of the page the sticky canvas is showing right now
+    const top = this.viewTop = this.canvas.getBoundingClientRect().top - this.el.getBoundingClientRect().top;
+    c.setTransform(d, 0, 0, d, 0, -top * d);
+    c.filter = 'none';
+    c.clearRect(0, top, this.cw, this.ch);
+    const from = (top - 20) / this.L, to = (top + this.ch + 20) / this.L;
     for (const s of this.ink.strokes) {
       if (!s.pts || !s.pts.length) continue;
+      const [y0, y1] = this.span(s);
+      if (y1 < from || y0 > to) continue; // off screen
       this.dot(s);
       for (let i = 1; i < s.pts.length / 4; i++) this.piece(s, i);
       this.tail(s);
     }
-    this.ctx.filter = 'none';
+    c.filter = 'none';
+  },
+  spans: new WeakMap(),
+  span(s) { // top and bottom of a stroke in lines, remembered until the stroke changes
+    let v = this.spans.get(s);
+    if (!v || v[2] !== s.pts.length) {
+      let a = Infinity, b = -Infinity;
+      for (let k = 1; k < s.pts.length; k += 4) { a = Math.min(a, s.pts[k]); b = Math.max(b, s.pts[k]); }
+      this.spans.set(s, v = [a, b, s.pts.length]);
+    }
+    return v;
   },
 };
 const inkLinesOf = page => Object.entries((page && page.ink && page.ink.lines) || {})

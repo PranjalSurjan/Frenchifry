@@ -46,6 +46,10 @@ English-style pronunciation (from Wiktionary) that you can tap to hear in a Fren
   was guessed from French spelling rules.
 - Tap **Free** in the toolbar for plain freehand ink: notes, drawings, underlines. It's never read and gets
   no arrow or pronunciation box. Tap the pen button to go back to French writing.
+- **Select** in the toolbar lets you move writing, e.g. to make room for a word you missed:
+  draw a loop around some writing, or **tap a line to select everything from there down**, then drag the
+  dashed box (with the pen or a finger). It moves up and down by whole lines, and pronunciation boxes move
+  with their words. The bar above the box has **Everything below**, **Delete** and **Done**. Undo puts it back.
 - Only the S Pen writes; fingers scroll and tap. Pick the **eraser** to rub out strokes; the arrow and box
   update by themselves. **Undo / Redo** step through your writing, and
   **Clear** erases all handwriting on the page (Undo brings it back).

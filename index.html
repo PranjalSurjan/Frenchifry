@@ -162,6 +162,21 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 }
 .pen-hover.erase { width: 24px; height: 24px; margin: -12px 0 0 -12px; background: rgba(255,255,255,.55); border: 1.5px solid var(--muted); opacity: 1; }
 .pen-hover[hidden] { display: none; }
+/* Select tool: the loop you draw, the dashed box around what's selected, and its little bar */
+.sel-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.sel-layer svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.lasso { fill: rgba(47,111,228,.06); stroke: #2f6fe4; stroke-width: 1.5; stroke-dasharray: 6 5; }
+.sel-box {
+  position: absolute; pointer-events: auto; touch-action: none; cursor: move;
+  border: 1.5px dashed #2f6fe4; border-radius: 8px; background: rgba(47,111,228,.06);
+}
+.sel-bar {
+  position: absolute; pointer-events: auto; display: flex; gap: 2px; padding: 4px; border-radius: 12px; white-space: nowrap;
+  background: var(--toolbar); color: var(--tool-icon); box-shadow: 0 6px 18px rgba(0,0,0,.2);
+}
+.sel-bar button { height: 38px; padding: 0 12px; border-radius: 9px; font-size: .85rem; font-weight: 600; }
+.sel-bar button:active { background: var(--tool-active); }
+.ink-marks[hidden] { display: none; }
 
 /* ---------- keyboard dock ---------- */
 .dock { flex: none; background: var(--chrome); border-top: 1px solid var(--hair); padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -275,6 +290,7 @@ const I = {
   redo: '<svg viewBox="0 0 24 24"><path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 000 12"/></svg>',
   eraser: '<svg viewBox="0 0 24 24"><path d="M15 4l5 5-10 10H6l-3-3z"/><path d="M10 9l5 5M13 20h8"/></svg>',
   scribble: '<svg viewBox="0 0 24 24"><path d="M3 17c3-7 5-7 6-3s2 3 4-1 4-5 5-2 1 4 3 3"/></svg>',
+  select: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/></svg>',
   clear: '<svg viewBox="0 0 24 24"><path d="M7 21h10M5 15l7-11 7 11-4 3H9z"/></svg>',
   eye: '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>',
@@ -476,15 +492,16 @@ const Sheet = {
   get ink() { const pg = this.page; return pg ? (pg.ink = pg.ink || { strokes: [], lines: {} }) : { strokes: [], lines: {} }; },
   mount(el, pid, pageId, readonly) {
     if (pid !== this.pid || pageId !== this.pageId) {
-      this.done = []; this.undone = []; this.cur = null; this.dirty.clear(); this.busy = {}; this.extra = 0;
+      this.done = []; this.undone = []; this.cur = null; this.dirty.clear(); this.busy = {}; this.extra = 0; this.sel = null;
       clearTimeout(this.readTimer); this.readTimer = null;
     }
     this.el = el; this.pid = pid; this.pageId = pageId; this.readonly = readonly; this.rows = 0; this.cw = this.ch = 0;
+    this.drag = this.lasso = null;
     el.innerHTML = `<canvas class="ink-layer" aria-hidden="true"></canvas><div class="ink-marks"></div>
       ${readonly ? '' : '<div class="sheet-hint">Write a French word on any line with your S Pen. Pause, and an arrow appears for the meaning, with how it sounds underneath.</div>'}
-      <div class="pen-hover" hidden></div>`;
+      <div class="sel-layer"></div><div class="pen-hover" hidden></div>`;
     this.canvas = el.querySelector('canvas'); this.ctx = this.canvas.getContext('2d');
-    this.marksEl = el.querySelector('.ink-marks'); this.hover = el.querySelector('.pen-hover');
+    this.marksEl = el.querySelector('.ink-marks'); this.hover = el.querySelector('.pen-hover'); this.selEl = el.querySelector('.sel-layer');
     const opt = { capture: true, passive: false };
     el.addEventListener('pointerdown', e => this.down(e), opt);
     el.addEventListener('pointermove', e => this.move(e), opt);
@@ -544,14 +561,14 @@ const Sheet = {
       this.canvas.style.height = h + 'px';
       this.canvas.width = Math.round(w * z * d); this.canvas.height = Math.round(h * z * d); // sharp at any zoom
     }
-    this.redraw(); this.marks();
+    this.redraw(); this.marks(); this.renderSel();
   },
-  busyNow() { return !!(this.cur || this.readTimer || this.saveTimer || Object.keys(this.busy).length); },
+  busyNow() { return !!(this.cur || this.drag || this.lasso || this.readTimer || this.saveTimer || Object.keys(this.busy).length); },
 
   // ---- pen input ----
   holds(e) {
     if (this.readonly) return false;
-    if (this.cur) return true; // pen on the glass: neither it nor a resting palm may scroll the page
+    if (this.cur || this.drag || this.lasso) return true; // pen on the glass: neither it nor a resting palm may scroll the page
     for (const t of e.touches) if (t.touchType === 'stylus') return true;
     return false;
   },
@@ -571,6 +588,7 @@ const Sheet = {
     this.hover.style.transform = `translate(${(e.clientX - r.left) / this.z}px, ${(e.clientY - r.top) / this.z}px)`;
   },
   down(e) {
+    if (this.tool === 'select' && !this.readonly && this.selectDown(e)) return;
     if (e.pointerType !== 'pen') return;
     this.sawPen();
     if (this.readonly) return;
@@ -593,10 +611,12 @@ const Sheet = {
     const hint = this.el.querySelector('.sheet-hint'); if (hint) hint.hidden = true;
   },
   move(e) {
+    if (this.drag && e.pointerId === this.drag.pointerId) { e.preventDefault(); e.stopPropagation(); this.dragMove(e); return; }
+    if (this.lasso && e.pointerId === this.lasso.pointerId) { e.preventDefault(); e.stopPropagation(); this.lassoMove(e); return; }
     if (e.pointerType !== 'pen') return;
     this.sawPen();
     if (this.cur && e.pointerId === this.cur.pointerId) { e.preventDefault(); e.stopPropagation(); this.draw(e); return; }
-    if (!this.readonly && !(e.buttons & 1)) this.showHover(e); // hovering above the page
+    if (!this.readonly && this.tool !== 'select' && !(e.buttons & 1)) this.showHover(e); // hovering above the page
   },
   addPoint(s, e) {
     const r = this.rect;
@@ -624,6 +644,8 @@ const Sheet = {
     else { const line = (c.y - this.rect.top) / this.z / this.L; if (line > this.rows - 3) this.grow(Math.floor(line)); }
   },
   up(e) {
+    if (this.drag && e.pointerId === this.drag.pointerId) { e.preventDefault(); e.stopPropagation(); this.dragEnd(); return; }
+    if (this.lasso && e.pointerId === this.lasso.pointerId) { e.preventDefault(); e.stopPropagation(); this.lassoEnd(); return; }
     const c = this.cur;
     if (!c || e.pointerId !== c.pointerId) return;
     e.preventDefault(); e.stopPropagation();
@@ -765,9 +787,133 @@ const Sheet = {
     }
     return false;
   },
+  // ---- Select tool: draw around writing (or tap a line to take everything from there down), then drag it ----
+  setTool(t) { this.tool = t; if (t !== 'select') this.select(null); },
+  pagePoint(e) { return [(e.clientX - this.rect.left) / this.z, (e.clientY - this.rect.top) / this.z]; },
+  selectDown(e) {
+    if (e.target.closest('.sel-bar, .ink-box')) return true; // let taps on those buttons through
+    const onBox = e.target.closest('.sel-box');
+    if (!onBox && e.pointerType !== 'pen') return true; // fingers drag a selection; anywhere else they scroll
+    e.preventDefault(); e.stopPropagation();
+    try { this.el.setPointerCapture(e.pointerId); } catch (err) { }
+    this.measure();
+    const [x, y] = this.pagePoint(e);
+    if (onBox) { this.drag = { pointerId: e.pointerId, x, y, dx: 0, dl: 0 }; this.marksEl.hidden = true; return true; }
+    this.select(null);
+    this.lasso = { pointerId: e.pointerId, pts: [[x, y]], x0: e.clientX, y0: e.clientY, moved: false };
+    return true;
+  },
+  lassoMove(e) {
+    const l = this.lasso;
+    if (!l.moved && Math.hypot(e.clientX - l.x0, e.clientY - l.y0) > 8) l.moved = true;
+    l.pts.push(this.pagePoint(e));
+    this.selEl.innerHTML = `<svg width="1" height="1"><polygon class="lasso" points="${l.pts.map(p => Math.round(p[0]) + ',' + Math.round(p[1])).join(' ')}"/></svg>`;
+  },
+  lassoEnd() {
+    const l = this.lasso; this.lasso = null;
+    let picked;
+    if (!l.moved) { // a tap: everything from this line down, to make room above it
+      const line = Math.floor(l.pts[0][1] / this.L);
+      picked = this.ink.strokes.filter(s => s.l >= line);
+    } else { // strokes mostly inside the loop
+      picked = this.ink.strokes.filter(s => {
+        let inside = 0; const n = s.pts.length / 4;
+        for (let i = 0; i < n; i++) { const [x, y] = this.px(s, i); if (insidePolygon(x, y, l.pts)) inside++; }
+        return inside >= n * 0.6;
+      });
+    }
+    this.select(picked.map(s => s.id));
+    if (!picked.length) toast(l.moved ? 'Nothing inside. Draw around the writing you want to move.' : 'There’s no writing on or below this line.');
+  },
+  select(ids) { this.sel = ids && ids.length ? new Set(ids) : null; this.renderSel(); },
+  selected() { return this.sel ? this.ink.strokes.filter(s => this.sel.has(s.id)) : []; },
+  renderSel() {
+    if (!this.selEl || this.lasso) return;
+    const list = this.selected();
+    if (!list.length) { this.sel = null; this.selEl.innerHTML = ''; return; }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const s of list) for (let i = 0; i < s.pts.length / 4; i++) {
+      const [x, y] = this.px(s, i); x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
+    const d = this.drag, pad = 10;
+    const left = x0 - pad + (d ? d.dx : 0), top = y0 - pad + (d ? d.dl * this.L : 0), w = x1 - x0 + pad * 2, h = y1 - y0 + pad * 2;
+    this.selEl.innerHTML = `<div class="sel-box" style="left:${left}px;top:${top}px;width:${w}px;height:${h}px" title="Drag to move"></div>
+      ${d ? '' : `<div class="sel-bar" style="left:${Math.max(0, left)}px;top:${top > 54 ? top - 52 : top + h + 8}px">
+        <button data-act="sel-below">Everything below</button><button data-act="sel-delete">Delete</button><button data-act="sel-done">Done</button></div>`}`;
+  },
+  dragMove(e) {
+    const d = this.drag, desk = $('.desk');
+    if (desk) { // near the top or bottom of the screen, scroll so you can keep dragging
+      const r = desk.getBoundingClientRect();
+      if (e.clientY > r.bottom - 48) desk.scrollTop += 14; else if (e.clientY < r.top + 48) desk.scrollTop -= 14;
+    }
+    this.measure();
+    const [x, y] = this.pagePoint(e), list = this.selected();
+    let dx = x - d.x;
+    if (Math.abs(dx) < 24) dx = 0; // a little sideways wobble doesn't move it
+    // up and down snaps to whole ruled lines, and nothing can go above the first line
+    const highest = Math.min(...list.map(s => Math.min(s.l, Math.floor(this.span(s)[0]))));
+    const dl = Math.max(-highest, Math.round((y - d.y) / this.L));
+    if (dx === d.dx && dl === d.dl) return;
+    d.dx = dx; d.dl = dl;
+    this.grow(Math.max(...list.map(s => s.l)) + dl);
+    this.redraw(); this.renderSel();
+  },
+  dragEnd() {
+    const d = this.drag; this.drag = null; this.marksEl.hidden = false;
+    if (d.dx || d.dl) this.moveSel(d.dx, d.dl); else { this.redraw(); this.renderSel(); }
+  },
+  moveSel(dx, dl) {
+    const sel = this.sel, ids = [...sel], before = JSON.parse(JSON.stringify(this.ink.lines));
+    const fr = this.ink.strokes.filter(s => s.r === 'fr');
+    // a word's pronunciation travels with it when the whole word moves; a word that's split up is read again
+    const moved = [...new Set(fr.filter(s => sel.has(s.id)).map(s => s.l))];
+    const whole = moved.filter(l => fr.every(s => s.l !== l || sel.has(s.id)));
+    this.shift(ids, dx, dl);
+    const lines = {};
+    for (const [l, v] of Object.entries(before)) if (!whole.includes(+l)) lines[l] = v;
+    for (const l of whole) if (before[l]) lines[l + dl] = before[l];
+    this.ink.lines = lines;
+    for (const l of moved) {
+      if (!whole.includes(l)) { this.dirty.add(l); this.dirty.add(l + dl); }
+      else if (fr.some(s => !sel.has(s.id) && s.l === l + dl)) this.dirty.add(l + dl); // landed on another word's line
+    }
+    this.record({ move: { ids, dx, dl, before, after: JSON.parse(JSON.stringify(lines)) } });
+    this.schedule(300); this.redraw(); this.marks(); this.save(); this.grow(); this.renderSel();
+  },
+  shift(ids, dx, dl) {
+    const set = new Set(ids), fx = dx / this.W;
+    for (const s of this.ink.strokes) {
+      if (!set.has(s.id)) continue;
+      for (let k = 0; k < s.pts.length; k += 4) {
+        s.pts[k] = Math.round((s.pts[k] + fx) * 1e4) / 1e4; s.pts[k + 1] = Math.round((s.pts[k + 1] + dl) * 1e3) / 1e3;
+      }
+      s.l += dl; this.spans.delete(s);
+    }
+  },
+  selBelow() { // grow the selection to everything from its top line down
+    const list = this.selected(); if (!list.length) return;
+    const top = Math.min(...list.map(s => s.l));
+    this.select(this.ink.strokes.filter(s => s.l >= top).map(s => s.id));
+  },
+  selDelete() {
+    const st = this.ink.strokes, erased = [];
+    for (let i = st.length - 1; i >= 0; i--) if (this.sel && this.sel.has(st[i].id)) erased.push({ stroke: st.splice(i, 1)[0], i });
+    this.select(null);
+    if (!erased.length) return;
+    this.record({ erased }); this.redraw(); this.changed(erased.map(x => x.stroke), 300);
+  },
+
   record(a) { this.done.push(a); this.undone = []; },
   remove(s) { const st = this.ink.strokes, i = st.findIndex(x => x.id === s.id); if (i >= 0) st.splice(i, 1); },
   apply(a, back) {
+    if (a.move) {
+      const k = back ? -1 : 1;
+      this.shift(a.move.ids, a.move.dx * k, a.move.dl * k);
+      this.ink.lines = JSON.parse(JSON.stringify(back ? a.move.before : a.move.after));
+      this.redraw(); this.marks(); this.save(); this.grow(); this.renderSel();
+      return;
+    }
     const st = this.ink.strokes, touched = [];
     if (a.added) { if (back) this.remove(a.added); else st.push(a.added); touched.push(a.added); }
     if (a.erased) {
@@ -778,6 +924,7 @@ const Sheet = {
     if (a.lines) this.ink.lines = back ? a.lines : {};
     this.redraw();
     if (a.lines) { this.marks(); this.save(); } else this.changed(touched, 300);
+    this.renderSel();
   },
   undo() { if (this.cur) return; const a = this.done.pop(); if (!a) return; this.apply(a, true); this.undone.push(a); },
   redo() { if (this.cur) return; const a = this.undone.pop(); if (!a) return; this.apply(a, false); this.done.push(a); },
@@ -824,14 +971,16 @@ const Sheet = {
     c.setTransform(d, 0, 0, d, 0, -top * d);
     c.filter = 'none';
     c.clearRect(0, top, this.cw, this.ch);
-    const from = (top - 20) / this.L, to = (top + this.ch + 20) / this.L;
+    const from = (top - 20) / this.L, to = (top + this.ch + 20) / this.L, dr = this.drag, sel = dr && this.sel;
     for (const s of this.ink.strokes) {
       if (!s.pts || !s.pts.length) continue;
-      const [y0, y1] = this.span(s);
-      if (y1 < from || y0 > to) continue; // off screen
+      const moving = sel && sel.has(s.id); // being dragged: drawn where it will land
+      if (!moving) { const [y0, y1] = this.span(s); if (y1 < from || y0 > to) continue; } // off screen
+      if (moving) { c.save(); c.translate(dr.dx, dr.dl * this.L); }
       this.dot(s);
       for (let i = 1; i < s.pts.length / 4; i++) this.piece(s, i);
       this.tail(s);
+      if (moving) c.restore();
     }
     c.filter = 'none';
   },
@@ -846,7 +995,15 @@ const Sheet = {
     return v;
   },
 };
-const inkLinesOf = page => Object.entries((page && page.ink && page.ink.lines) || {})
+function insidePolygon(x, y, poly) { // ray casting
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+const inkLinesOf = page =>Object.entries((page && page.ink && page.ink.lines) || {})
   .filter(([, v]) => v.fr).map(([l, v]) => ({ line: +l, ...v })).sort((a, b) => a.line - b.line);
 
 // ======================================================================
@@ -1073,6 +1230,7 @@ function renderToolbarOnly() {
     ${mine ? `
       <button class="tool" aria-pressed="${S.inputMode === 'pen' && Sheet.tool === 'pen'}" data-act="mode-pen" aria-label="French pen: words are read and get a pronunciation">${I.pen}</button>
       <button class="tool labeled" aria-pressed="${Sheet.tool === 'free'}" data-act="freepen" aria-label="Free pen: plain ink, not read">${I.scribble}Free</button>
+      <button class="tool labeled" aria-pressed="${Sheet.tool === 'select'}" data-act="select" aria-label="Select and move writing">${I.select}Select</button>
       <button class="tool" aria-pressed="${Sheet.tool === 'eraser'}" data-act="eraser" aria-label="Eraser">${I.eraser}</button>
       <button class="tool" aria-pressed="${S.padOpen && S.inputMode === 'keys'}" data-act="mode-keys" aria-label="Type">${I.keyboard}</button>
       <span class="sep"></span>
@@ -1193,9 +1351,16 @@ app.addEventListener('click', async ev => {
       break;
     }
     case 'pagemenu': pageMenu(t); break;
-    case 'mode-pen': Sheet.tool = 'pen'; toggleMode('pen'); break;
-    case 'freepen': Sheet.tool = Sheet.tool === 'free' ? 'pen' : 'free'; renderToolbarOnly(); break;
-    case 'eraser': Sheet.tool = Sheet.tool === 'eraser' ? 'pen' : 'eraser'; renderToolbarOnly(); break;
+    case 'mode-pen': Sheet.setTool('pen'); toggleMode('pen'); break;
+    case 'freepen': Sheet.setTool(Sheet.tool === 'free' ? 'pen' : 'free'); renderToolbarOnly(); break;
+    case 'eraser': Sheet.setTool(Sheet.tool === 'eraser' ? 'pen' : 'eraser'); renderToolbarOnly(); break;
+    case 'select':
+      Sheet.setTool(Sheet.tool === 'select' ? 'pen' : 'select'); renderToolbarOnly();
+      if (Sheet.tool === 'select') toast('Draw around writing to select it, or tap a line to select everything below. Then drag the box.');
+      break;
+    case 'sel-below': Sheet.selBelow(); break;
+    case 'sel-delete': Sheet.selDelete(); break;
+    case 'sel-done': Sheet.select(null); break;
     case 'mode-keys': toggleMode('keys'); break;
     case 'undo': Sheet.undo(); break;
     case 'redo': Sheet.redo(); break;

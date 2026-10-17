@@ -39,8 +39,13 @@ English-style pronunciation (from Wiktionary) that you can tap to hear in a Fren
   le → the
   [luh]
   ```
-- **Write the English meaning by hand** after the arrow. It stays as ink and is never read.
+- **Write the English meaning by hand** after the arrow. It stays as ink; nothing is ever corrected.
   One word or phrase per line; anything you write to the left of the arrow counts as French.
+- **Mistake highlighter**: once you've written the English, the app checks the French word against it
+  (using English Wiktionary). If the French doesn't seem to mean what you wrote, or isn't a French word at all,
+  it gets a red **highlighter** mark. Tap its pronunciation box to see why, then fix it yourself (rub it out
+  and rewrite it). If the app can't tell, for example offline or for a phrase the dictionary doesn't
+  have, it doesn't highlight anything.
 - **Tap a pronunciation box** to hear the word. A box with **?** couldn't be read; tap it to try again, or
   rub the word out and write it again. A small ≈ means Wiktionary didn't have the word and the pronunciation
   was guessed from French spelling rules.

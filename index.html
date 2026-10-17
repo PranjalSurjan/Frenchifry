@@ -151,6 +151,8 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 }
 .ink-box svg { width: 13px; height: 13px; color: var(--muted); opacity: .6; }
 .ink-box.playing { box-shadow: 0 0 0 2px var(--c, var(--ink)); }
+/* highlighter over a French word that doesn't look right for its English */
+.ink-flag { position: absolute; border-radius: 6px; background: rgba(255, 70, 70, .3); mix-blend-mode: multiply; pointer-events: none; }
 .sheet-hint {
   position: absolute; left: 0; top: 0; height: var(--line); display: flex; align-items: flex-end; padding-bottom: 10px;
   color: var(--muted); font-size: .95rem; pointer-events: none;
@@ -487,12 +489,12 @@ const LOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" wid
 const Sheet = {
   el: null, canvas: null, ctx: null, hover: null, marksEl: null, rect: null, L: 56, rows: 0, observer: null, z: 1, W: 1,
   pid: null, pageId: null, readonly: true, tool: 'pen', cur: null, done: [], undone: [],
-  dirty: new Set(), busy: {}, token: {}, readTimer: null, saveTimer: null, nearTimer: null, swallowUntil: 0,
+  dirty: new Set(), enDirty: new Set(), busy: {}, token: {}, jtoken: {}, readTimer: null, saveTimer: null, nearTimer: null, swallowUntil: 0,
   get page() { return S.data[this.pid]?.pages[this.pageId]; },
   get ink() { const pg = this.page; return pg ? (pg.ink = pg.ink || { strokes: [], lines: {} }) : { strokes: [], lines: {} }; },
   mount(el, pid, pageId, readonly) {
     if (pid !== this.pid || pageId !== this.pageId) {
-      this.done = []; this.undone = []; this.cur = null; this.dirty.clear(); this.busy = {}; this.extra = 0; this.sel = null;
+      this.done = []; this.undone = []; this.cur = null; this.dirty.clear(); this.enDirty.clear(); this.busy = {}; this.extra = 0; this.sel = null;
       clearTimeout(this.readTimer); this.readTimer = null;
     }
     this.el = el; this.pid = pid; this.pageId = pageId; this.readonly = readonly; this.rows = 0; this.cw = this.ch = 0;
@@ -700,37 +702,42 @@ const Sheet = {
     s.r = arrow != null && minX >= arrow + ARROW_W / 2 ? 'en' : 'fr';
   },
   changed(strokes, wait) {
-    for (const s of strokes) if (s.r === 'fr') this.dirty.add(s.l);
+    for (const s of strokes) { if (s.r === 'fr') this.dirty.add(s.l); else if (s.r === 'en') this.enDirty.add(s.l); }
     this.schedule(wait);
     if (S.covered) this.redraw();
     this.marks(); this.save(); this.grow();
   },
   schedule(wait) {
     clearTimeout(this.readTimer); this.readTimer = null;
-    if (this.dirty.size) this.readTimer = setTimeout(() => this.readDirty(), wait);
+    if (this.dirty.size || this.enDirty.size) this.readTimer = setTimeout(() => this.readDirty(), wait);
   },
   readDirty() {
     this.readTimer = null;
     if (this.cur) return this.schedule(600);
-    const lines = [...this.dirty]; this.dirty.clear();
-    for (const l of lines) this.read(l);
+    const fr = [...this.dirty], en = [...this.enDirty].filter(l => !this.dirty.has(l));
+    this.dirty.clear(); this.enDirty.clear();
+    for (const l of fr) this.read(l); // reading the French checks it against the English afterwards
+    for (const l of en) this.judge(l);
   },
-  async read(line) {
-    const frs = this.ink.strokes.filter(s => s.r === 'fr' && s.l === line);
-    const token = this.token[line] = (this.token[line] || 0) + 1;
-    if (!frs.length) { delete this.ink.lines[line]; delete this.busy[line]; this.marks(); this.save(); return; }
-    this.busy[line] = true; this.marks();
-    const W = this.W, L = this.L, t0 = Math.min(...frs.map(s => s.t0));
-    let minX = Infinity; for (const s of frs) for (let k = 0; k < s.pts.length; k += 4) minX = Math.min(minX, s.pts[k] * W);
-    const ink = frs.map(s => {
+  inkOf(strokes, line) { // strokes as the handwriting reader wants them: [[xs], [ys], [times]] in px
+    const W = this.W, L = this.L, t0 = Math.min(...strokes.map(s => s.t0));
+    let minX = Infinity; for (const s of strokes) for (let k = 0; k < s.pts.length; k += 4) minX = Math.min(minX, s.pts[k] * W);
+    const ink = strokes.map(s => {
       const xs = [], ys = [], ts = [];
       for (let k = 0; k < s.pts.length; k += 4) {
         xs.push(Math.round(s.pts[k] * W - minX + 10)); ys.push(Math.round((s.pts[k + 1] - line + 1) * L)); ts.push(s.t0 - t0 + s.pts[k + 3]);
       }
       return [xs, ys, ts];
     });
-    const width = Math.max(...ink.flatMap(s => s[0])) + 20;
-    const list = await readHandwriting(ink, width, L * 3, 'fr');
+    return { ink, width: Math.max(...ink.flatMap(s => s[0])) + 20, height: L * 3 };
+  },
+  async read(line) {
+    const frs = this.ink.strokes.filter(s => s.r === 'fr' && s.l === line);
+    const token = this.token[line] = (this.token[line] || 0) + 1;
+    if (!frs.length) { delete this.ink.lines[line]; delete this.busy[line]; this.marks(); this.save(); return; }
+    this.busy[line] = true; this.marks();
+    const { ink, width, height } = this.inkOf(frs, line);
+    const list = await readHandwriting(ink, width, height, 'fr');
     if (token !== this.token[line]) return; // the line changed while it was being read
     const fr = (list && list[0]) || '';
     const res = { fr, sound: '', ipa: '', guessed: false };
@@ -740,11 +747,32 @@ const Sheet = {
     delete this.busy[line];
     this.ink.lines[line] = res;
     this.marks(); this.save();
+    this.judge(line);
+  },
+  // Once the English after the arrow is written, read it (your ink stays as it is) and check the French
+  // word against it. A doubtful word only gets a highlighter mark; nothing is ever corrected for you.
+  async judge(line) {
+    const res = this.ink.lines[line];
+    if (!res || !res.fr || this.readonly) return;
+    const ens = this.ink.strokes.filter(s => s.r === 'en' && s.l === line);
+    const token = this.jtoken[line] = (this.jtoken[line] || 0) + 1;
+    if (!ens.length) { if (res.check) { delete res.check; this.marks(); this.save(); } return; }
+    const { ink, width, height } = this.inkOf(ens, line);
+    const list = await readHandwriting(ink, width, height, 'en');
+    if (token !== this.jtoken[line] || !list || !list.length) return; // changed meanwhile, or couldn't read it
+    const fr = res.fr, check = await Judge.check(fr, list.slice(0, 3), res.guessed);
+    const cur = this.ink.lines[line];
+    if (token !== this.jtoken[line] || !cur || cur.fr !== fr) return;
+    if (check.v === 'wrong') cur.check = { why: check.why, en: list[0] }; else delete cur.check;
+    this.marks(); this.save();
   },
   say(line) { // tap a pronunciation box: hear the word (or try reading it again)
     const res = this.ink.lines[line];
     if (!res || res.failed) { if (!this.readonly) { this.dirty.add(line); this.schedule(0); } return; }
     markPlaying('ink:' + line); Voice.speak(res.fr, () => markPlaying(null));
+    if (res.check) toast(res.check.why === 'spelling'
+      ? `“${res.fr}” isn’t in the French dictionary. Check the spelling.`
+      : `“${res.fr}” doesn’t seem to mean “${res.check.en}”. Check the French word.`);
   },
   marks() { // the arrow after each word and the locked pronunciation box under it
     if (!this.marksEl || !this.rect) return;
@@ -756,6 +784,8 @@ const Sheet = {
       const b = this.bounds(l);
       const label = busy ? '…' : res.failed ? '?' : (res.guessed ? '≈ ' : '') + (res.sound || res.fr);
       const title = busy ? 'Reading…' : res.failed ? 'Couldn’t read this word. Tap to try again.' : res.fr + (res.ipa ? `  /${res.ipa}/` : '');
+      if (!busy && res.check) // highlighter over a French word that doesn't look right for the English
+        html += `<div class="ink-flag" style="left:${b.minX - 6}px;top:${l * L + 6}px;width:${b.maxX - b.minX + 12}px;height:${L - 8}px"></div>`;
       html += `<div class="ink-arrow" style="--c:${b.c};left:${b.maxX + ARROW_GAP}px;top:${l * L}px;height:${L}px">→</div>
         <button class="ink-box" data-ink-line="${l}" style="--c:${b.c};left:${b.minX}px;top:${(l + 1) * L}px" title="${esc(title)}"
           aria-label="${esc(busy ? 'Reading' : res.failed ? 'Couldn’t read, tap to retry' : 'Hear ' + res.fr + ', sounds like ' + label)}">${LOCK}${esc(label)}</button>`;
@@ -909,7 +939,9 @@ const Sheet = {
     for (const l of moved) {
       if (!whole.includes(l)) { this.dirty.add(l); this.dirty.add(l + dl); }
       else if (fr.some(s => !sel.has(s.id) && s.l === l + dl)) this.dirty.add(l + dl); // landed on another word's line
+      this.enDirty.add(l + dl); // check the word against the English that's now beside it
     }
+    for (const s of this.ink.strokes) if (s.r === 'en' && sel.has(s.id)) { this.enDirty.add(s.l); this.enDirty.add(s.l - dl); }
     this.record({ move: { ids, dx, dl, before, after: JSON.parse(JSON.stringify(lines)) } });
     this.schedule(300); this.redraw(); this.marks(); this.save(); this.grow(); this.renderSel();
   },
@@ -1103,6 +1135,86 @@ async function readHandwriting(ink, width, height, language) {
   }
   return null;
 }
+
+// Does the French word fit the English you wrote? Checked against English Wiktionary two ways: the French
+// word's own meanings (following "plural of …" / "inflection of …" back to the main word), and the French
+// translations listed for the English word. It only answers 'wrong' when it's fairly sure; when it can't
+// tell (offline, a phrase the dictionary doesn't have), it says 'unknown' and nothing gets highlighted.
+const Judge = {
+  cache: new Map(),
+  norm(s) { return String(s).toLowerCase().replace(/’/g, "'").replace(/[^\p{L}\p{N}' -]+/gu, ' ').replace(/\s+/g, ' ').trim(); },
+  core(s) { return s.replace(/^(to|a|an|the) (?=\S)/, ''); }, // "to eat" → "eat", but "the" stays "the"
+  stem(w) { return w.length > 3 ? w.replace(/(ies)$/, 'y').replace(/s$/, '') : w; },
+  same(gloss, mine) {
+    if (!gloss || !mine) return false;
+    const a = this.core(gloss).split(' ').map(w => this.stem(w)), b = this.core(mine).split(' ').map(w => this.stem(w));
+    if (a.join(' ') === b.join(' ')) return true;
+    // what you wrote appears as whole words inside a short meaning: "eat" in "eat a meal"
+    return a.length <= 6 && b.length <= 3 && (' ' + a.join(' ') + ' ').includes(' ' + b.join(' ') + ' ');
+  },
+  async check(fr, ens, notInDictionary) {
+    const key = this.norm(fr) + '|' + ens.map(e => this.norm(e)).join('/') + '|' + !!notInDictionary;
+    if (this.cache.has(key)) return this.cache.get(key);
+    const saved = LS.get('judge:' + key, null); // remembered on this tablet, so Wiktionary isn't asked twice
+    if (saved) { this.cache.set(key, saved); return saved; }
+    let out = { v: 'unknown' };
+    try { out = await this.decide(this.norm(fr), ens.map(e => this.core(this.norm(e))).filter(Boolean), notInDictionary); } catch (e) { }
+    if (out.v !== 'unknown') { this.cache.set(key, out); LS.set('judge:' + key, out); }
+    return out;
+  },
+  defsCache: new Map(),
+  async decide(fr, mine, notInDictionary) {
+    if (notInDictionary) return { v: 'wrong', why: 'spelling' }; // French Wiktionary doesn't know the word
+    if (!fr || !mine.length) return { v: 'unknown' };
+    const meanings = await this.meanings(fr);
+    if (meanings === null) return { v: 'unknown' };
+    if (mine.some(m => meanings.some(g => this.same(g, m)))) return { v: 'ok' };
+    const listed = await this.translatesTo(mine[0], fr);
+    if (listed) return { v: 'ok' };
+    if (!meanings.length || listed === null) return { v: 'unknown' };
+    return { v: 'wrong', why: 'meaning' };
+  },
+  async definitions(word) { // the French-language definitions on English Wiktionary, as plain text
+    if (this.defsCache.has(word)) return this.defsCache.get(word);
+    const r = await fetch('https://en.wiktionary.org/api/rest_v1/page/definition/' + encodeURIComponent(word.replace(/ /g, '_')));
+    if (r.status === 404) { this.defsCache.set(word, []); return []; }
+    if (!r.ok) throw new Error('Wiktionary'); // busy or offline: the caller treats this as "can't tell"
+    const j = await r.json(), text = h => new DOMParser().parseFromString(h || '', 'text/html').body.textContent;
+    const out = (j.fr || []).flatMap(sec => (sec.definitions || []).map(d => text(d.definition)));
+    this.defsCache.set(word, out);
+    return out;
+  },
+  async meanings(word) {
+    let defs;
+    try { defs = await this.definitions(word); } catch (e) { return null; }
+    const out = [], from = new Set();
+    const add = t => t.replace(/\([^)]*\)/g, ' ').split(/[,;/]| or /).forEach(g => { g = this.norm(g); if (g) out.push(g); });
+    for (const t of defs) {
+      add(t);
+      // "plural of chat", "inflection of manger:" — the main word's meanings count too
+      if (/(plural|singular|feminine|masculine|inflection|participle|person|form|spelling|indicative|subjunctive|imperative|conditional|infinitive) .*\bof\b/i.test(t)) {
+        const m = t.match(/\bof\s+([\p{L}'’-]+)\s*:?\s*$/u) || t.match(/\bof\s+([\p{L}'’-]+)/u);
+        if (m && this.norm(m[1]) !== word) from.add(this.norm(m[1]));
+      }
+    }
+    for (const w of [...from].slice(0, 2)) { try { (await this.definitions(w)).forEach(add); } catch (e) { } }
+    return out;
+  },
+  async translatesTo(en, fr) { // is the French word among the English word's listed French translations?
+    const re = new RegExp('\\{\\{tt?\\+?\\|fr\\|' + fr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[|}]', 'i');
+    let reached = false;
+    for (const page of [en, en + '/translations']) {
+      try {
+        const r = await fetch('https://en.wiktionary.org/w/api.php?action=parse&prop=wikitext&format=json&origin=*&redirects=1&page=' + encodeURIComponent(page));
+        if (!r.ok) continue;
+        reached = true;
+        const j = await r.json(), wt = j.parse && j.parse.wikitext && j.parse.wikitext['*'];
+        if (wt && re.test(wt)) return true;
+      } catch (e) { }
+    }
+    return reached ? false : null;
+  },
+};
 
 // "que --> than" or "moi = me" written (or typed) on one line
 const ARROW = /\s*(?:[-–—=]+\s*>|→|⟶|➔|➜|=)\s*/;

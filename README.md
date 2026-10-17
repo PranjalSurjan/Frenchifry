@@ -1,8 +1,8 @@
 # French notes
 
-A shared French notebook for two people. Write a French word with the S Pen and it becomes a line on
-your page, like `que → than`, with an English-style pronunciation (from Wiktionary) underneath and a
-button that says it in a French voice. You write the English meaning yourself.
+A shared French notebook for two people. Write French anywhere on the page with the S Pen; when you pause,
+an arrow appears after the word for your English meaning, and a locked box underneath shows an
+English-style pronunciation (from Wiktionary) that you can tap to hear in a French voice.
 
 ## Files
 
@@ -31,21 +31,26 @@ button that says it in a French voice. You write the English meaning yourself.
 
 ## How to use it
 
-- At the bottom of your page, **write the French** in the left box with the S Pen and, if you like, the
-  **English meaning** in the right box. A moment after you lift the pen, the handwriting is read and you
-  can hear how the French sounds before you add it.
-- Tap **Add line**. The line goes on the page as `French → English`, with the pronunciation box under it
-  filled in automatically. Writing a whole line like `moi → me` in the French box works too.
-  If it read a word wrong, fix it with **⋮ → Edit French**.
-- The pronunciation box is yours to fix: tap it and type. A small ≈ means Wiktionary didn't have the word
-  and the pronunciation was guessed from French spelling rules, so check those ones.
-- In the writing boxes only the S Pen writes once you've used it, so a palm resting on the screen is ignored.
-  **Hold the S Pen button** (or pick the **eraser**) to rub out strokes. **Undo / Redo** and **Clear** work on the boxes.
-- Tap **Type** to add a line with the keyboard instead (`que -> than` works there too).
-- **Tap the speaker** to hear a line. `0.6×` slows the voice, `FR`/`CA` switches France and Canadian French.
-  **▶** reads the whole page aloud.
-- **Eye button** blurs the English so you can test yourself; tap a line to reveal it.
-- **⋮ on a line** lets you edit the French, fix the pronunciation, look it up again, or delete the line.
+- **Write a French word on any line** of the page with the S Pen. Your handwriting stays as you wrote it.
+- **Pause** for a moment and the line is read: an arrow appears right after your word, and a locked box on
+  the line below shows how it sounds:
+  ```
+  le → the
+  [luh]
+  ```
+- **Write the English meaning by hand** after the arrow. It stays as ink and is never read.
+  One word or phrase per line; anything you write to the left of the arrow counts as French.
+- **Tap a pronunciation box** to hear the word. A box with **?** couldn't be read; tap it to try again, or
+  rub the word out and write it again. A small ≈ means Wiktionary didn't have the word and the pronunciation
+  was guessed from French spelling rules.
+- Only the S Pen writes; fingers scroll and tap. **Hold the S Pen button** (or pick the **eraser**) to rub
+  out strokes; the arrow and box update by themselves. **Undo / Redo** step through your writing, and
+  **Clear** erases all handwriting on the page (Undo brings it back).
+- Tap **Type** to add a line with the keyboard instead (`que -> than` works there too). Typed lines sit at
+  the top of the page, with an editable pronunciation box and a speaker.
+- `0.6×` slows the voice, `FR`/`CA` switches France and Canadian French. **▶** reads the whole page aloud.
+- **Eye button** blurs the English, typed or handwritten, so you can test yourself.
+- **⋮ on a typed line** lets you edit the French, fix the pronunciation, look it up again, or delete the line.
 - **Trash button on one of your home-page cards** deletes that page and all its lines after confirmation.
 - Your friend's pages are on their tab at the top, read only.
 

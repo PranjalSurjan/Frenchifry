@@ -90,7 +90,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   padding: 24px var(--pad-r) 0 var(--pad-l);
   box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 6px 24px rgba(0,0,0,.05);
 }
-.paper-body { flex: 1; padding-bottom: var(--line); }
+.paper-body { flex: none; }
 .paper::before { /* double red margin, like a real notebook */
   content: ''; position: absolute; top: 0; bottom: 0; left: 64px; width: 5px;
   border-left: 1.5px solid var(--margin); border-right: 1.5px solid var(--margin);
@@ -132,44 +132,35 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .speak:active, .more:active { background: var(--chip); }
 .speak.playing { color: var(--c, var(--ink)); }
 .covered .cell.en:not(.revealed) { filter: blur(7px); cursor: pointer; user-select: none; }
-.page-count { text-align: right; font-size: .9rem; color: var(--muted); padding-top: 8px; }
-.empty-lines { height: calc(var(--line) * 2); display: flex; align-items: flex-end; padding-bottom: 10px; color: var(--muted); font-size: .95rem; }
 
-/* ---------- writing strip: French and English boxes for the S Pen ---------- */
-.writer {
-  position: sticky; bottom: 0; z-index: 2; margin: 0 calc(var(--pad-r) * -1) 0 calc(var(--pad-l) * -1);
-  padding: 12px var(--pad-r) calc(14px + env(safe-area-inset-bottom, 0px)) var(--pad-l);
-  background: var(--paper); border-top: 1px solid var(--hair); box-shadow: 0 -8px 20px rgba(0,0,0,.05);
-  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+/* ---------- handwriting sheet: write French on any ruled line ---------- */
+.ink-sheet { position: relative; flex: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.ink-sheet.pen-near { touch-action: none; } /* while the S Pen hovers, the nib's first touch can't start a scroll */
+.ink-sheet .ink-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.ink-marks { position: absolute; inset: 0; pointer-events: none; }
+.ink-arrow {
+  position: absolute; display: flex; align-items: flex-end; padding-bottom: 6px;
+  font-family: var(--hand); font-size: 1.7rem; line-height: 1; color: var(--c, var(--ink));
 }
-.write-grid {
-  display: grid; grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 6px; align-items: center;
-  grid-template-areas: "fr arrow en add" "frc . enc add";
+/* the locked pronunciation box under each word: read-only, tap to hear it */
+.ink-box {
+  position: absolute; pointer-events: auto; height: calc(var(--line) - 16px); margin-top: 8px; padding: 0 12px 0 9px;
+  display: flex; align-items: center; gap: 6px; border-radius: 9px; background: var(--chip); border: 1px solid var(--hair);
+  font-family: var(--hand); font-size: 1.25rem; color: var(--c, var(--ink)); white-space: nowrap;
 }
-.writer.en-first .write-grid { grid-template-areas: "en arrow fr add" "enc . frc add"; }
-.write-grid > .arrow { grid-area: arrow; margin: 0; color: var(--ink); }
-.pad-box {
-  position: relative; height: calc(var(--line) * 2); border-radius: 12px; overflow: hidden; border: 1px solid var(--hair);
-  background: var(--paper) linear-gradient(to bottom, transparent calc(var(--line) * 1.45), var(--rule) calc(var(--line) * 1.45), var(--rule) calc(var(--line) * 1.45 + 2px), transparent calc(var(--line) * 1.45 + 2px));
+.ink-box svg { width: 13px; height: 13px; color: var(--muted); opacity: .6; }
+.ink-box.playing { box-shadow: 0 0 0 2px var(--c, var(--ink)); }
+.sheet-hint {
+  position: absolute; left: 0; top: 0; height: var(--line); display: flex; align-items: flex-end; padding-bottom: 10px;
+  color: var(--muted); font-size: .95rem; pointer-events: none;
 }
-.pad-box[data-pad="fr"] { grid-area: fr; }
-.pad-box[data-pad="en"] { grid-area: en; }
-.pad-box canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
-.pad-box .ph { position: absolute; left: 14px; top: 10px; font-size: .9rem; color: var(--muted); pointer-events: none; }
-.pad-box.inked .ph { display: none; }
+.sheet-hint[hidden] { display: none; }
 .pen-hover {
   position: absolute; left: 0; top: 0; z-index: 2; width: 8px; height: 8px; margin: -4px 0 0 -4px;
   border-radius: 50%; background: var(--ink); opacity: .5; pointer-events: none; will-change: transform;
 }
 .pen-hover.erase { width: 24px; height: 24px; margin: -12px 0 0 -12px; background: rgba(255,255,255,.55); border: 1.5px solid var(--muted); opacity: 1; }
 .pen-hover[hidden] { display: none; }
-.cands { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 38px; }
-.cands[data-cands="fr"] { grid-area: frc; }
-.cands[data-cands="en"] { grid-area: enc; }
-.cands .hint { color: var(--muted); font-size: .85rem; }
-.say-preview { height: 36px; padding: 0 10px; border-radius: 18px; display: flex; align-items: center; gap: 6px; font-family: var(--hand); font-size: 1.2rem; color: var(--ink); }
-.say-preview svg { width: 18px; height: 18px; }
-.add-line { grid-area: add; align-self: stretch; padding: 0 24px; }
 
 /* ---------- keyboard dock ---------- */
 .dock { flex: none; background: var(--chrome); border-top: 1px solid var(--hair); padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -257,10 +248,6 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   .row { grid-template-columns: minmax(0,1fr) 20px minmax(0,1fr) 40px 32px; column-gap: 8px; }
   .row.readonly { grid-template-columns: minmax(0,1fr) 20px minmax(0,1fr) 40px; }
   .cell { font-size: 1.3rem; }
-  .write-grid, .writer.en-first .write-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "fr" "frc" "en" "enc" "add"; }
-  .writer.en-first .write-grid { grid-template-areas: "en" "enc" "fr" "frc" "add"; }
-  .write-grid > .arrow { display: none; }
-  .add-line { height: 48px; }
   .page-title { font-size: 1.6rem; }
   .page-date { font-size: 1.1rem; }
 }
@@ -443,7 +430,7 @@ if ('speechSynthesis' in window) { Voice.load(); speechSynthesis.onvoiceschanged
 let playing = null;
 function playPage(pid, pageId) {
   if (playing) { playing.stop = true; speechSynthesis.cancel(); playing = null; renderToolbarOnly(); return; }
-  const list = entriesOf(pid, pageId).filter(e => e.fr);
+  const list = wordsOf(pid, S.data[pid].pages[pageId]);
   if (!list.length) return;
   playing = { stop: false, i: 0 };
   const run = () => {
@@ -456,77 +443,138 @@ function playPage(pid, pageId) {
   renderToolbarOnly(); run();
 }
 function markPlaying(id) {
-  document.querySelectorAll('.speak.playing').forEach(b => b.classList.remove('playing'));
-  if (id) { const b = document.querySelector(`.row[data-id="${id}"] .speak`); if (b) { b.classList.add('playing'); b.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }
+  document.querySelectorAll('.speak.playing, .ink-box.playing').forEach(b => b.classList.remove('playing'));
+  if (!id) return;
+  const b = id.startsWith('ink:') ? document.querySelector(`.ink-box[data-ink-line="${id.slice(4)}"]`) : document.querySelector(`.row[data-id="${id}"] .speak`);
+  if (b) { b.classList.add('playing'); b.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
 }
+// Every French word on a page, in order: typed lines first, then handwriting from top to bottom
+const wordsOf = (pid, page) => !page ? [] : [
+  ...entriesOf(pid, page.id).filter(e => e.fr),
+  ...inkLinesOf(page).map(l => ({ id: 'ink:' + l.line, fr: l.fr, sound: l.sound, color: null })),
+];
 
 // ======================================================================
-// S Pen writing boxes
-// The pen writes, fingers scroll and tap, and once the S Pen has been used a resting palm can't draw.
-// Hold the S Pen button (or pick the eraser) to rub out whole strokes.
+// Handwriting on the page (S Pen)
+// Write a French word on any ruled line. When you pause, it's read: an arrow appears after it for the
+// English (which you write by hand and which stays as ink), and a locked box on the line below shows how
+// it sounds. Fingers scroll and tap; only the pen writes. Hold the S Pen button (or pick the eraser) to
+// rub out strokes.
+// Saved with the page as ink = { strokes: [{ id, c: colour, l: line, r: 'fr' | 'en', t0, pts: [x, y, pressure, ms, …] }],
+// lines: { [line]: { fr, sound, ipa, guessed } } }. x is a share of the page width, y is measured in ruled lines.
 // ======================================================================
-class InkPad {
-  constructor(lang) { this.lang = lang; this.strokes = []; this.done = []; this.undone = []; this.cur = null; this.t0 = 0; }
-  attach(box, onInk) {
-    this.box = box; this.onInk = onInk;
-    this.canvas = box.querySelector('canvas'); this.ctx = this.canvas.getContext('2d');
-    this.hover = box.querySelector('.pen-hover');
-    const c = this.canvas, opt = { passive: false };
-    c.addEventListener('pointerdown', e => this.down(e), opt);
-    c.addEventListener('pointermove', e => this.move(e), opt);
+const ARROW_GAP = 10, ARROW_W = 34;
+const LOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
+const Sheet = {
+  el: null, canvas: null, ctx: null, hover: null, marksEl: null, rect: null, L: 56, rows: 0, observer: null,
+  pid: null, pageId: null, readonly: true, tool: 'pen', cur: null, done: [], undone: [],
+  dirty: new Set(), busy: {}, token: {}, readTimer: null, saveTimer: null, nearTimer: null, swallowUntil: 0,
+  get page() { return S.data[this.pid]?.pages[this.pageId]; },
+  get ink() { const pg = this.page; return pg ? (pg.ink = pg.ink || { strokes: [], lines: {} }) : { strokes: [], lines: {} }; },
+  mount(el, pid, pageId, readonly) {
+    if (pid !== this.pid || pageId !== this.pageId) {
+      this.done = []; this.undone = []; this.cur = null; this.dirty.clear(); this.busy = {};
+      clearTimeout(this.readTimer); this.readTimer = null;
+    }
+    this.el = el; this.pid = pid; this.pageId = pageId; this.readonly = readonly; this.rows = 0;
+    el.innerHTML = `<canvas class="ink-layer" aria-hidden="true"></canvas><div class="ink-marks"></div>
+      ${readonly ? '' : '<div class="sheet-hint">Write a French word on any line with your S Pen. Pause, and an arrow appears for the meaning, with how it sounds underneath.</div>'}
+      <div class="pen-hover" hidden></div>`;
+    this.canvas = el.querySelector('canvas'); this.ctx = this.canvas.getContext('2d');
+    this.marksEl = el.querySelector('.ink-marks'); this.hover = el.querySelector('.pen-hover');
+    const opt = { capture: true, passive: false };
+    el.addEventListener('pointerdown', e => this.down(e), opt);
+    el.addEventListener('pointermove', e => this.move(e), opt);
     // pointerrawupdate arrives as soon as the pen moves instead of once per frame, so ink keeps up with the nib.
-    if ('onpointerrawupdate' in window) c.addEventListener('pointerrawupdate', e => this.draw(e));
-    c.addEventListener('pointerup', e => this.up(e));
-    c.addEventListener('pointercancel', e => this.up(e));
-    c.addEventListener('pointerleave', () => { if (!this.cur) this.hover.hidden = true; });
-    // With touch-action: none as well, no browser gets to turn a stroke into a scroll and cut it off.
-    c.addEventListener('touchstart', e => e.preventDefault(), opt);
-    c.addEventListener('touchmove', e => e.preventDefault(), opt);
-    c.addEventListener('contextmenu', e => e.preventDefault());
+    if ('onpointerrawupdate' in window) el.addEventListener('pointerrawupdate', e => this.draw(e), opt);
+    el.addEventListener('pointerup', e => this.up(e), opt);
+    el.addEventListener('pointercancel', e => this.up(e), opt);
+    el.addEventListener('pointerleave', e => { if (e.pointerType === 'pen' && !this.cur) this.away(); });
+    // Chrome decides whether a touch scrolls from touchstart/touchmove, which come after pointerdown.
+    // Cancelling them while the pen is down stops it turning a stroke into a scroll and cutting it off.
+    const hold = e => { if (this.holds(e)) e.preventDefault(); };
+    el.addEventListener('touchstart', hold, opt);
+    el.addEventListener('touchmove', hold, opt);
+    el.addEventListener('contextmenu', e => { if (this.cur || el.classList.contains('pen-near')) e.preventDefault(); }, true);
+    el.addEventListener('click', e => {
+      if (performance.now() < this.swallowUntil) { e.preventDefault(); e.stopPropagation(); } // a stroke that ended on a box
+    }, true);
+    this.L = parseFloat(getComputedStyle(el).getPropertyValue('--line')) || 56;
     if (this.observer) this.observer.disconnect();
     this.observer = new ResizeObserver(() => this.fit());
-    this.observer.observe(c);
-    this.fit(); this.sync();
-  }
+    this.observer.observe(el);
+    this.grow(); this.fit();
+    if (this.dirty.size && !this.readTimer) this.schedule(0);
+  },
+  grow(line = 0) { // enough ruled lines to fill the screen, plus room below the lowest writing
+    const desk = $('.desk');
+    const fill = desk ? Math.ceil((desk.clientHeight - this.el.offsetTop) / this.L) : 0;
+    let used = line + 1;
+    for (const s of this.ink.strokes) used = Math.max(used, s.l + 2);
+    const n = Math.max(12, fill, used + 3);
+    if (n !== this.rows) { this.rows = n; this.el.style.height = n * this.L + 'px'; }
+  },
   fit() {
-    const r = this.rect = this.canvas.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+    if (!this.el) return;
+    const r = this.rect = this.el.getBoundingClientRect(), d = window.devicePixelRatio || 1;
     this.canvas.width = Math.round(r.width * d); this.canvas.height = Math.round(r.height * d);
     this.ctx.setTransform(d, 0, 0, d, 0, 0);
-    this.redraw();
-  }
-  sync() { if (this.box) this.box.classList.toggle('inked', this.strokes.length > 0); }
-  erasing(e) { return InkPad.tool === 'eraser' || (e.buttons & 34) !== 0 || e.button === 5; } // S Pen button or eraser end
+    this.redraw(); this.marks();
+  },
+  busyNow() { return !!(this.cur || this.readTimer || this.saveTimer || Object.keys(this.busy).length); },
+
+  // ---- pen input ----
+  holds(e) {
+    if (this.readonly) return false;
+    if (this.cur) return true; // pen on the glass: neither it nor a resting palm may scroll the page
+    for (const t of e.touches) if (t.touchType === 'stylus') return true;
+    return false;
+  },
+  sawPen() {
+    if (this.readonly) return;
+    this.el.classList.add('pen-near');
+    clearTimeout(this.nearTimer);
+    this.nearTimer = setTimeout(() => this.el && this.el.classList.remove('pen-near'), 800);
+  },
+  away() { clearTimeout(this.nearTimer); this.el.classList.remove('pen-near'); this.hover.hidden = true; },
+  erasing(e) { return this.tool === 'eraser' || (e.buttons & 34) !== 0 || e.button === 5; }, // S Pen button or eraser end
   showHover(e) {
+    const r = this.el.getBoundingClientRect();
     this.hover.hidden = false;
     this.hover.classList.toggle('erase', this.erasing(e));
-    this.hover.style.transform = `translate(${e.clientX - this.rect.left}px, ${e.clientY - this.rect.top}px)`;
-  }
-  point(e) {
-    return { x: e.clientX - this.rect.left, y: e.clientY - this.rect.top, p: e.pressure || 0.5, t: Math.round(e.timeStamp - this.t0) };
-  }
+    this.hover.style.transform = `translate(${e.clientX - r.left}px, ${e.clientY - r.top}px)`;
+  },
   down(e) {
-    if (e.pointerType === 'pen') InkPad.penSeen = true;
-    else if (e.pointerType === 'touch' && InkPad.penSeen) return; // palm rejection once the S Pen is in use
-    e.preventDefault();
-    if (InkPad.active) return;
-    InkPad.active = InkPad.last = this;
-    try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { }
-    this.rect = this.canvas.getBoundingClientRect();
-    if (!this.strokes.length) this.t0 = e.timeStamp;
-    const pt = this.point(e);
-    this.cur = { pointerId: e.pointerId, t: e.timeStamp, x: e.clientX, y: e.clientY };
-    this.onInk('start');
-    if (this.erasing(e)) { this.cur.erased = []; this.showHover(e); this.erase(pt); return; }
+    if (e.pointerType !== 'pen') return;
+    this.sawPen();
+    if (this.readonly) return;
+    if (this.cur) { e.preventDefault(); return; }
+    if (e.target.closest('.ink-box')) return; // a pen tap on a pronunciation box plays it
+    e.preventDefault(); e.stopPropagation();
+    try { this.el.setPointerCapture(e.pointerId); } catch (err) { }
+    clearTimeout(this.readTimer); this.readTimer = null; // still writing: wait before reading
+    this.rect = this.el.getBoundingClientRect();
+    this.cur = { pointerId: e.pointerId, t: e.timeStamp, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, ts0: e.timeStamp, moved: false };
+    if (this.erasing(e)) { this.cur.erased = []; this.showHover(e); this.erase(e); return; }
     this.hover.hidden = true;
-    this.cur.stroke = { color: S.ink, points: [pt] };
-    this.strokes.push(this.cur.stroke);
-    this.dot(this.cur.stroke);
-    this.sync();
-  }
+    const s = { id: uid(), c: S.ink, t0: Date.now(), pts: [] };
+    this.cur.stroke = s;
+    this.addPoint(s, e);
+    this.ink.strokes.push(s);
+    this.dot(s);
+    const hint = this.el.querySelector('.sheet-hint'); if (hint) hint.hidden = true;
+  },
   move(e) {
-    if (this.cur && e.pointerId === this.cur.pointerId) { e.preventDefault(); this.draw(e); return; }
-    if (e.pointerType === 'pen' && !(e.buttons & 1)) { this.rect = this.canvas.getBoundingClientRect(); this.showHover(e); } // hovering
-  }
+    if (e.pointerType !== 'pen') return;
+    this.sawPen();
+    if (this.cur && e.pointerId === this.cur.pointerId) { e.preventDefault(); e.stopPropagation(); this.draw(e); return; }
+    if (!this.readonly && !(e.buttons & 1)) this.showHover(e); // hovering above the page
+  },
+  addPoint(s, e) {
+    const r = this.rect;
+    s.pts.push(Math.round((e.clientX - r.left) / r.width * 1e4) / 1e4, Math.round((e.clientY - r.top) / this.L * 1e3) / 1e3,
+      Math.round((e.pressure || 0.5) * 100) / 100, Math.round(e.timeStamp - this.cur.ts0));
+  },
   draw(e) {
     const c = this.cur;
     if (!c || e.pointerId !== c.pointerId) return;
@@ -535,90 +583,225 @@ class InkPad {
     for (const ev of list) {
       // pointermove repeats samples pointerrawupdate already drew: skip older ones and exact repeats
       if (ev.timeStamp < c.t || (ev.timeStamp === c.t && ev.clientX === c.x && ev.clientY === c.y)) continue;
-      c.t = ev.timeStamp; c.x = ev.clientX; c.y = ev.clientY;
-      const pt = this.point(ev);
-      if (c.erased) { this.erase(pt); continue; }
-      c.stroke.points.push(pt);
-      this.piece(c.stroke, c.stroke.points.length - 1);
+      const far = Math.hypot(ev.clientX - c.x, ev.clientY - c.y);
+      c.t = ev.timeStamp;
+      if (!c.moved && Math.hypot(ev.clientX - c.x0, ev.clientY - c.y0) > 6) c.moved = true;
+      if (c.erased) { c.x = ev.clientX; c.y = ev.clientY; this.erase(ev); continue; }
+      if (far < 0.7) continue; // too close to the last sample to matter
+      c.x = ev.clientX; c.y = ev.clientY;
+      this.addPoint(c.stroke, ev);
+      this.piece(c.stroke, c.stroke.pts.length / 4 - 1);
     }
     if (c.erased) this.showHover(e);
-  }
+    else if ((c.y - this.rect.top) / this.L > this.rows - 3) this.grow(Math.floor((c.y - this.rect.top) / this.L));
+  },
   up(e) {
     const c = this.cur;
     if (!c || e.pointerId !== c.pointerId) return;
-    this.cur = null; InkPad.active = null;
-    if (c.erased) { if (c.erased.length) this.record({ erased: c.erased }); }
-    else { this.tail(c.stroke); this.record({ added: c.stroke }); }
-    this.onInk('end');
-  }
-  erase(pt) {
+    e.preventDefault(); e.stopPropagation();
+    this.cur = null;
+    if (c.moved) this.swallowUntil = performance.now() + 400;
+    if (c.erased) { if (c.erased.length) { this.record({ erased: c.erased }); this.changed(c.erased.map(x => x.stroke), 500); } return; }
+    const s = c.stroke;
+    this.tail(s);
+    this.classify(s);
+    this.record({ added: s });
+    this.changed([s], 1100); // read the line once you pause
+  },
+
+  // ---- which line a stroke is on, and whether it's French or the English after the arrow ----
+  bounds(line) {
+    let minX = Infinity, maxX = -Infinity, c = null;
+    for (const s of this.ink.strokes) {
+      if (s.r !== 'fr' || s.l !== line) continue;
+      c = c || s.c;
+      for (let k = 0; k < s.pts.length; k += 4) { minX = Math.min(minX, s.pts[k]); maxX = Math.max(maxX, s.pts[k]); }
+    }
+    if (!c) return null;
+    const W = this.rect.width;
+    return { minX: minX * W, maxX: maxX * W, c };
+  },
+  arrowAt(line) {
+    if (!this.ink.lines[line] && !this.busy[line]) return null;
+    const b = this.bounds(line);
+    return b ? b.maxX + ARROW_GAP : null;
+  },
+  classify(s) {
+    const ys = [], xs = [];
+    for (let k = 0; k < s.pts.length; k += 4) { xs.push(s.pts[k]); ys.push(s.pts[k + 1]); }
+    const sorted = [...ys].sort((a, b) => a - b);
+    let line = Math.max(0, Math.floor(sorted[sorted.length >> 1]));
+    const W = this.rect.width, minX = Math.min(...xs) * W, maxX = Math.max(...xs) * W;
+    // an accent or the dot of an i, written high, belongs to the word on the line below it
+    if ((sorted[sorted.length - 1] - sorted[0]) < 0.35 && maxX - minX < this.L * 0.35) {
+      const below = this.bounds(line + 1);
+      if (below && maxX > below.minX - this.L * 0.3 && minX < below.maxX + this.L * 0.3) line += 1;
+    }
+    s.l = line;
+    const arrow = this.arrowAt(line);
+    s.r = arrow != null && minX >= arrow + ARROW_W / 2 ? 'en' : 'fr';
+  },
+  changed(strokes, wait) {
+    for (const s of strokes) if (s.r === 'fr') this.dirty.add(s.l);
+    this.schedule(wait);
+    if (S.covered) this.redraw();
+    this.marks(); this.save(); this.grow();
+  },
+  schedule(wait) {
+    clearTimeout(this.readTimer); this.readTimer = null;
+    if (this.dirty.size) this.readTimer = setTimeout(() => this.readDirty(), wait);
+  },
+  readDirty() {
+    this.readTimer = null;
+    if (this.cur) return this.schedule(600);
+    const lines = [...this.dirty]; this.dirty.clear();
+    for (const l of lines) this.read(l);
+  },
+  async read(line) {
+    const frs = this.ink.strokes.filter(s => s.r === 'fr' && s.l === line);
+    const token = this.token[line] = (this.token[line] || 0) + 1;
+    if (!frs.length) { delete this.ink.lines[line]; delete this.busy[line]; this.marks(); this.save(); return; }
+    this.busy[line] = true; this.marks();
+    const W = this.rect.width, L = this.L, t0 = Math.min(...frs.map(s => s.t0));
+    let minX = Infinity; for (const s of frs) for (let k = 0; k < s.pts.length; k += 4) minX = Math.min(minX, s.pts[k] * W);
+    const ink = frs.map(s => {
+      const xs = [], ys = [], ts = [];
+      for (let k = 0; k < s.pts.length; k += 4) {
+        xs.push(Math.round(s.pts[k] * W - minX + 10)); ys.push(Math.round((s.pts[k + 1] - line + 1) * L)); ts.push(s.t0 - t0 + s.pts[k + 3]);
+      }
+      return [xs, ys, ts];
+    });
+    const width = Math.max(...ink.flatMap(s => s[0])) + 20;
+    const list = await readHandwriting(ink, width, L * 3, 'fr');
+    if (token !== this.token[line]) return; // the line changed while it was being read
+    const fr = (list && list[0]) || '';
+    const res = { fr, sound: '', ipa: '', guessed: false };
+    if (!fr) res.failed = true;
+    else try { const r = await Pron.pronounce(fr); Object.assign(res, { sound: r.sound, ipa: r.ipa, guessed: r.guessed }); } catch (e) { }
+    if (token !== this.token[line]) return;
+    delete this.busy[line];
+    this.ink.lines[line] = res;
+    this.marks(); this.save();
+  },
+  say(line) { // tap a pronunciation box: hear the word (or try reading it again)
+    const res = this.ink.lines[line];
+    if (!res || res.failed) { if (!this.readonly) { this.dirty.add(line); this.schedule(0); } return; }
+    markPlaying('ink:' + line); Voice.speak(res.fr, () => markPlaying(null));
+  },
+  marks() { // the arrow after each word and the locked pronunciation box under it
+    if (!this.marksEl || !this.rect) return;
+    const L = this.L, lines = this.ink.lines;
+    let html = '';
+    for (const l of new Set(this.ink.strokes.filter(s => s.r === 'fr').map(s => s.l))) {
+      const res = lines[l], busy = this.busy[l];
+      if (!res && !busy) continue;
+      const b = this.bounds(l);
+      const label = busy ? '…' : res.failed ? '?' : (res.guessed ? '≈ ' : '') + (res.sound || res.fr);
+      const title = busy ? 'Reading…' : res.failed ? 'Couldn’t read this word. Tap to try again.' : res.fr + (res.ipa ? `  /${res.ipa}/` : '');
+      html += `<div class="ink-arrow" style="--c:${b.c};left:${b.maxX + ARROW_GAP}px;top:${l * L}px;height:${L}px">→</div>
+        <button class="ink-box" data-ink-line="${l}" style="--c:${b.c};left:${b.minX}px;top:${(l + 1) * L}px" title="${esc(title)}"
+          aria-label="${esc(busy ? 'Reading' : res.failed ? 'Couldn’t read, tap to retry' : 'Hear ' + res.fr + ', sounds like ' + label)}">${LOCK}${esc(label)}</button>`;
+    }
+    this.marksEl.innerHTML = html;
+    const hint = this.el.querySelector('.sheet-hint'); if (hint) hint.hidden = this.ink.strokes.length > 0;
+  },
+  save() {
+    if (this.readonly) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      const pg = this.page; if (!pg || !pg.ink) return;
+      for (const l of Object.keys(pg.ink.lines)) if (!pg.ink.strokes.some(s => s.r === 'fr' && s.l === +l)) delete pg.ink.lines[l];
+      pg.updated = Date.now(); Store.put(this.pid, 'page', pg);
+    }, 700);
+  },
+
+  // ---- eraser, undo, redo, clear ----
+  erase(e) {
+    const r = this.rect, x = e.clientX - r.left, y = e.clientY - r.top, strokes = this.ink.strokes;
     let hit = false;
-    for (let i = this.strokes.length - 1; i >= 0; i--) {
-      if (!this.hits(this.strokes[i], pt.x, pt.y, 12)) continue;
-      this.cur.erased.push({ stroke: this.strokes.splice(i, 1)[0], i });
+    for (let i = strokes.length - 1; i >= 0; i--) {
+      if (!this.hits(strokes[i], x, y, 12)) continue;
+      this.cur.erased.push({ stroke: strokes.splice(i, 1)[0], i });
       hit = true;
     }
-    if (hit) { this.redraw(); this.sync(); }
-  }
+    if (hit) { this.redraw(); this.marks(); }
+  },
   hits(s, x, y, r) {
-    const pts = s.points;
-    for (let i = 0; i < pts.length; i++) {
-      const b = pts[i], a = pts[i - 1] || b, dx = b.x - a.x, dy = b.y - a.y, len = dx * dx + dy * dy;
-      const t = len ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / len)) : 0;
-      if (Math.hypot(a.x + t * dx - x, a.y + t * dy - y) < r + this.size(b.p) / 2) return true;
+    for (let i = 0; i < s.pts.length / 4; i++) {
+      const [bx, by, p] = this.px(s, i), [ax, ay] = i ? this.px(s, i - 1) : [bx, by];
+      const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+      const t = len ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len)) : 0;
+      if (Math.hypot(ax + t * dx - x, ay + t * dy - y) < r + this.size(p) / 2) return true;
     }
     return false;
-  }
-  record(a) { this.done.push(a); this.undone = []; }
-  remove(s) { const i = this.strokes.indexOf(s); if (i >= 0) this.strokes.splice(i, 1); }
+  },
+  record(a) { this.done.push(a); this.undone = []; },
+  remove(s) { const st = this.ink.strokes, i = st.findIndex(x => x.id === s.id); if (i >= 0) st.splice(i, 1); },
   apply(a, back) {
-    if (a.added) { if (back) this.remove(a.added); else this.strokes.push(a.added); }
+    const st = this.ink.strokes, touched = [];
+    if (a.added) { if (back) this.remove(a.added); else st.push(a.added); touched.push(a.added); }
     if (a.erased) {
-      if (back) for (let k = a.erased.length - 1; k >= 0; k--) this.strokes.splice(Math.min(a.erased[k].i, this.strokes.length), 0, a.erased[k].stroke);
+      if (back) for (let k = a.erased.length - 1; k >= 0; k--) st.splice(Math.min(a.erased[k].i, st.length), 0, a.erased[k].stroke);
       else for (const { stroke } of a.erased) this.remove(stroke);
+      touched.push(...a.erased.map(x => x.stroke));
     }
-    this.redraw(); this.sync(); this.onInk('end');
-  }
-  undo() { if (this.cur) return false; const a = this.done.pop(); if (!a) return false; this.apply(a, true); this.undone.push(a); return true; }
-  redo() { if (this.cur) return false; const a = this.undone.pop(); if (!a) return false; this.apply(a, false); this.done.push(a); return true; }
-  clear() { // undoable, from the toolbar
-    if (this.cur || !this.strokes.length) return;
-    this.record({ erased: this.strokes.map((stroke, i) => ({ stroke, i })).reverse() });
-    this.strokes = []; this.redraw(); this.sync(); this.onInk('end');
-  }
-  reset() { this.strokes = []; this.done = []; this.undone = []; this.cur = null; if (this.ctx) this.redraw(); this.sync(); }
-  ink() { return this.strokes.map(s => [s.points.map(p => Math.round(p.x)), s.points.map(p => Math.round(p.y)), s.points.map(p => p.t)]); }
+    if (a.lines) this.ink.lines = back ? a.lines : {};
+    this.redraw();
+    if (a.lines) { this.marks(); this.save(); } else this.changed(touched, 300);
+  },
+  undo() { if (this.cur) return; const a = this.done.pop(); if (!a) return; this.apply(a, true); this.undone.push(a); },
+  redo() { if (this.cur) return; const a = this.undone.pop(); if (!a) return; this.apply(a, false); this.done.push(a); },
+  clear() {
+    const st = this.ink.strokes;
+    if (this.cur || !st.length) return;
+    if (!confirm('Erase all handwriting on this page? (Undo brings it back.)')) return;
+    const erased = st.map((stroke, i) => ({ stroke, i })).reverse(), lines = this.ink.lines;
+    st.length = 0; this.ink.lines = {}; this.dirty.clear(); this.busy = {};
+    this.record({ erased, lines });
+    this.redraw(); this.marks(); this.save();
+  },
 
   // ---- drawing: a smooth curve through the midpoints of the samples, width from pen pressure ----
-  size(p) { return 1.4 + p * 3.4; }
-  style(s) { const c = this.ctx; c.strokeStyle = c.fillStyle = s.color; c.lineCap = 'round'; c.lineJoin = 'round'; }
+  size(p) { return 1.4 + p * 3.4; },
+  px(s, i) { const k = i * 4; return [s.pts[k] * this.rect.width, s.pts[k + 1] * this.L, s.pts[k + 2]]; },
+  style(s) {
+    const c = this.ctx; c.strokeStyle = c.fillStyle = s.c || prof(this.pid).color; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.filter = S.covered && s.r === 'en' ? 'blur(6px)' : 'none'; // the eye button hides your English
+  },
   dot(s) {
-    const c = this.ctx, p = s.points[0];
-    this.style(s); c.beginPath(); c.arc(p.x, p.y, this.size(p.p) / 2, 0, Math.PI * 2); c.fill();
-  }
+    const c = this.ctx, [x, y, p] = this.px(s, 0);
+    this.style(s); c.beginPath(); c.arc(x, y, this.size(p) / 2, 0, Math.PI * 2); c.fill();
+  },
   piece(s, i) { // from halfway between samples i-2 and i-1, bending through i-1, to halfway to i
-    const c = this.ctx, pts = s.points, a = pts[i - 1], b = pts[i], o = pts[i - 2];
-    this.style(s);
-    c.lineWidth = this.size((a.p + b.p) / 2);
-    c.beginPath();
-    c.moveTo(o ? (o.x + a.x) / 2 : a.x, o ? (o.y + a.y) / 2 : a.y);
-    c.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2);
-    c.stroke();
-  }
+    const c = this.ctx, [ax, ay, ap] = this.px(s, i - 1), [bx, by, bp] = this.px(s, i);
+    let sx = ax, sy = ay;
+    if (i > 1) { const [ox, oy] = this.px(s, i - 2); sx = (ox + ax) / 2; sy = (oy + ay) / 2; }
+    this.style(s); c.lineWidth = this.size((ap + bp) / 2);
+    c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(ax, ay, (ax + bx) / 2, (ay + by) / 2); c.stroke();
+  },
   tail(s) {
-    const c = this.ctx, pts = s.points, n = pts.length;
+    const n = s.pts.length / 4;
     if (n < 2) return;
-    const a = pts[n - 2], b = pts[n - 1];
-    this.style(s); c.lineWidth = this.size(b.p);
-    c.beginPath(); c.moveTo((a.x + b.x) / 2, (a.y + b.y) / 2); c.lineTo(b.x, b.y); c.stroke();
-  }
+    const c = this.ctx, [ax, ay] = this.px(s, n - 2), [bx, by, bp] = this.px(s, n - 1);
+    this.style(s); c.lineWidth = this.size(bp);
+    c.beginPath(); c.moveTo((ax + bx) / 2, (ay + by) / 2); c.lineTo(bx, by); c.stroke();
+  },
   redraw() {
-    if (!this.rect) return;
+    if (!this.ctx || !this.rect) return;
+    this.ctx.filter = 'none';
     this.ctx.clearRect(0, 0, this.rect.width, this.rect.height);
-    for (const s of this.strokes) { this.dot(s); for (let i = 1; i < s.points.length; i++) this.piece(s, i); this.tail(s); }
-  }
-}
-InkPad.tool = 'pen'; InkPad.penSeen = false; InkPad.active = null; InkPad.last = null;
+    for (const s of this.ink.strokes) {
+      if (!s.pts || !s.pts.length) continue;
+      this.dot(s);
+      for (let i = 1; i < s.pts.length / 4; i++) this.piece(s, i);
+      this.tail(s);
+    }
+    this.ctx.filter = 'none';
+  },
+};
+const inkLinesOf = page => Object.entries((page && page.ink && page.ink.lines) || {})
+  .filter(([, v]) => v.fr).map(([l, v]) => ({ line: +l, ...v })).sort((a, b) => a.line - b.line);
 
 // Google's free handwriting reader (through /api/handwriting, or directly if that isn't deployed)
 async function readHandwriting(ink, width, height, language) {
@@ -647,87 +830,6 @@ function splitLine(fr, en = '') {
   if (!en) { const parts = fr.split(ARROW); if (parts.length > 1) { fr = parts[0].trim(); en = parts.slice(1).join(' ').trim(); } }
   return [fr, en];
 }
-
-// The writing strip at the bottom of your page: French box → English box → Add
-const Writer = {
-  pageId: null, pads: { fr: new InkPad('fr'), en: new InkPad('en') },
-  pick: { fr: '', en: '' }, state: { fr: '', en: '' },
-  timers: {}, ticket: { fr: 0, en: 0 }, reading: { fr: null, en: null }, sound: null,
-  mount(el, pageId) {
-    if (pageId !== this.pageId) { this.pageId = pageId; this.reset(); }
-    const box = (k, ph) => `<div class="pad-box" data-pad="${k}"><canvas aria-label="${k === 'fr' ? 'French' : 'English'} writing box for the S Pen"></canvas><span class="ph">${ph}</span><div class="pen-hover" hidden></div></div>`;
-    el.className = 'writer' + (prefs.order === 'en-fr' ? ' en-first' : '');
-    el.innerHTML = `<div class="write-grid">
-      ${box('fr', 'Write the French here, e.g. que')}
-      <div class="cell arrow" aria-hidden="true">→</div>
-      ${box('en', 'English meaning, e.g. than (optional)')}
-      <div class="cands" data-cands="fr" aria-live="polite"></div>
-      <div class="cands" data-cands="en" aria-live="polite"></div>
-      <button class="btn primary add-line" data-act="addwritten">Add line</button>
-    </div>`;
-    for (const k of ['fr', 'en']) this.pads[k].attach(el.querySelector(`[data-pad="${k}"]`), what => this.inked(k, what));
-    this.renderCands();
-  },
-  reset() {
-    for (const k of ['fr', 'en']) {
-      clearTimeout(this.timers[k]); this.timers[k] = null; this.ticket[k]++;
-      this.pads[k].reset(); this.pick[k] = ''; this.state[k] = ''; this.reading[k] = null;
-    }
-    this.sound = null;
-    this.renderCands();
-  },
-  hasInk() { return !!(InkPad.active || this.pads.fr.strokes.length || this.pads.en.strokes.length); },
-  inked(k, what) {
-    clearTimeout(this.timers[k]); this.timers[k] = null;
-    if (what === 'start') { this.ticket[k]++; return; }
-    this.timers[k] = setTimeout(() => this.read(k), 450); // read shortly after the pen lifts
-  },
-  read(k) {
-    clearTimeout(this.timers[k]); this.timers[k] = null;
-    const pad = this.pads[k], ticket = ++this.ticket[k];
-    if (!pad.strokes.length) {
-      this.pick[k] = ''; this.state[k] = '';
-      if (k === 'fr') this.sound = null;
-      this.renderCands(); return (this.reading[k] = Promise.resolve());
-    }
-    this.state[k] = 'reading'; this.renderCands();
-    return (this.reading[k] = readHandwriting(pad.ink(), pad.rect.width, pad.rect.height, k).then(list => {
-      if (ticket !== this.ticket[k]) return; // a newer stroke started a newer read
-      this.pick[k] = (list && list[0]) || '';
-      this.state[k] = !list ? 'failed' : this.pick[k] ? 'ready' : '';
-      this.renderCands();
-      if (k === 'fr') this.preview();
-    }));
-  },
-  async preview() { // how the French will sound, shown before the line is added
-    const fr = splitLine(this.pick.fr)[0];
-    this.sound = null; this.renderCands();
-    if (!fr) return;
-    try { const r = await Pron.pronounce(fr); if (splitLine(this.pick.fr)[0] === fr) { this.sound = r.sound; this.renderCands(); } } catch (e) { }
-  },
-  renderCands() {
-    for (const k of ['fr', 'en']) {
-      const box = document.querySelector(`[data-cands="${k}"]`); if (!box) continue;
-      if (this.state[k] === 'reading') box.innerHTML = '<span class="hint">Reading…</span>';
-      else if (this.state[k] === 'failed') box.innerHTML = '<span class="hint">Couldn’t read that. Check your connection, or use the keyboard.</span>';
-      else if (this.state[k] === 'ready') box.innerHTML = '<span class="hint">Handwriting ready. Tap Add line to add it.</span>' +
-        (k === 'fr' && this.sound ? `<button class="say-preview" data-act="saypreview" aria-label="Hear it">${I.speaker}${esc(this.sound)}</button>` : '');
-      else box.innerHTML = '';
-    }
-  },
-  async add(pageId) {
-    for (const k of ['fr', 'en']) if (this.timers[k]) this.read(k); // the pen just lifted: read now
-    await Promise.all([this.reading.fr, this.reading.en]);
-    if (InkPad.active) return;
-    const [fr, en] = splitLine(this.pick.fr, this.pick.en);
-    if (!fr) { toast(this.pads.fr.strokes.length ? 'Couldn’t read the French yet. Try writing it again.' : 'Write the French word first.'); return; }
-    this.reset();
-    await addEntry(pageId, fr, en);
-  },
-  undo() { const p = InkPad.last; if (!(p && p.undo())) (p === this.pads.fr ? this.pads.en : this.pads.fr).undo(); },
-  redo() { const p = InkPad.last; if (!(p && p.redo())) (p === this.pads.fr ? this.pads.en : this.pads.fr).redo(); },
-  clear() { this.pads.fr.clear(); this.pads.en.clear(); },
-};
 
 // ======================================================================
 // Entries
@@ -803,7 +905,7 @@ function renderHome() {
   document.documentElement.style.setProperty('--ink', p.color);
   const q = S.query.trim().toLowerCase();
   const pages = pagesOf(pid).filter(pg => !q || (pg.title || '').toLowerCase().includes(q) ||
-    entriesOf(pid, pg.id).some(e => (e.fr + ' ' + e.en).toLowerCase().includes(q)));
+    wordsOf(pid, pg).some(e => (e.fr + ' ' + (e.en || '')).toLowerCase().includes(q)));
 
   app.innerHTML = `
     <header class="appbar">
@@ -820,7 +922,7 @@ function renderHome() {
     </div>
     <main class="desk">
       ${pages.length ? `<div class="grid">${pages.map(pg => {
-        const es = entriesOf(pid, pg.id);
+        const es = wordsOf(pid, pg);
         return `<div class="page-card" style="--c:${p.color}">
           ${mine ? `<button class="card-delete" data-delete-page="${pg.id}" aria-label="Delete page ${esc(pg.title || 'Untitled')}" title="Delete page">${I.trash}</button>` : ''}
           <button class="card" data-open="${pg.id}">
@@ -852,13 +954,14 @@ function renderPage() {
     <nav class="toolbar" aria-label="Tools"></nav>
     <main class="desk"><div class="paper ${S.covered ? 'covered' : ''}">
       <div class="paper-body"></div>
-      ${mine ? '<section class="writer" aria-label="Write a new line"></section>' : ''}
+      <section class="ink-sheet" aria-label="Handwriting"></section>
     </div></main>
     ${mine && S.padOpen ? '<section class="dock"></section>' : ''}
   `;
   renderToolbarOnly();
   renderPageBody();
-  if (mine) { Writer.mount($('.writer'), pageId); renderDock(); }
+  Sheet.mount($('.ink-sheet'), pid, pageId, !mine);
+  if (mine) renderDock();
 }
 
 function renderToolbarOnly() {
@@ -867,15 +970,15 @@ function renderToolbarOnly() {
   const swatches = [...new Set([prof(S.me).color, ...INKS])].slice(0, 5);
   bar.innerHTML = `
     ${mine ? `
-      <button class="tool" aria-pressed="${S.inputMode === 'pen' && InkPad.tool === 'pen'}" data-act="mode-pen" aria-label="Write with the S Pen">${I.pen}</button>
-      <button class="tool" aria-pressed="${InkPad.tool === 'eraser'}" data-act="eraser" aria-label="Eraser (or hold the S Pen button while writing)">${I.eraser}</button>
+      <button class="tool" aria-pressed="${S.inputMode === 'pen' && Sheet.tool === 'pen'}" data-act="mode-pen" aria-label="Write with the S Pen">${I.pen}</button>
+      <button class="tool" aria-pressed="${Sheet.tool === 'eraser'}" data-act="eraser" aria-label="Eraser (or hold the S Pen button while writing)">${I.eraser}</button>
       <button class="tool" aria-pressed="${S.padOpen && S.inputMode === 'keys'}" data-act="mode-keys" aria-label="Type">${I.keyboard}</button>
       <span class="sep"></span>
       ${swatches.map(c => `<button class="swatch" style="background:${c}" aria-pressed="${c === S.ink}" data-ink="${c}" aria-label="Ink colour"></button>`).join('')}
       <span class="sep"></span>
       <button class="tool" data-act="undo" aria-label="Undo">${I.undo}</button>
       <button class="tool" data-act="redo" aria-label="Redo">${I.redo}</button>
-      <button class="tool" data-act="clear" aria-label="Clear the writing boxes">${I.clear}</button>
+      <button class="tool" data-act="clear" aria-label="Erase all handwriting on this page">${I.clear}</button>
       <span class="sep"></span>` : `<span class="readonly-note">Read only</span><span class="sep"></span>`}
     <button class="tool" aria-pressed="${S.covered}" data-act="cover" aria-label="Hide English to test yourself">${I.eye}</button>
     <button class="tool" data-act="playall" aria-label="${playing ? 'Stop' : 'Play every line'}">${playing ? I.stop : I.play}</button>
@@ -920,8 +1023,6 @@ function renderPageBody() {
       <div class="page-date">(${fmtDate(page.created)})</div>
     </div>
     ${es.map(e => rowHTML(e, mine)).join('')}
-    ${es.length ? '' : `<div class="empty-lines">${mine ? 'Write a French word in the box below. Its pronunciation and meaning fill in by themselves.' : 'No lines on this page yet.'}</div>`}
-    <div class="page-count">${es.length} ${es.length === 1 ? 'line' : 'lines'}</div>
   `;
   S.justAdded = null;
 }
@@ -968,6 +1069,7 @@ app.addEventListener('click', async ev => {
   if (t.dataset.open) { go(`#/${S.tab || S.me}/${t.dataset.open}`); return; }
   if (t.dataset.ink) { S.ink = t.dataset.ink; LS.set('ink', S.ink); document.documentElement.style.setProperty('--ink', S.ink); renderToolbarOnly(); return; }
   const row = t.closest('.row');
+  if (t.dataset.inkLine !== undefined) { Sheet.say(+t.dataset.inkLine); return; }
   if (row && t.matches('[data-speak]')) {
     const e = S.data[pid].entries[row.dataset.id];
     markPlaying(e.id); Voice.speak(e.fr, () => markPlaying(null)); return;
@@ -985,16 +1087,14 @@ app.addEventListener('click', async ev => {
       break;
     }
     case 'pagemenu': pageMenu(t); break;
-    case 'mode-pen': InkPad.tool = 'pen'; toggleMode('pen'); break;
-    case 'eraser': InkPad.tool = InkPad.tool === 'eraser' ? 'pen' : 'eraser'; renderToolbarOnly(); break;
+    case 'mode-pen': Sheet.tool = 'pen'; toggleMode('pen'); break;
+    case 'eraser': Sheet.tool = Sheet.tool === 'eraser' ? 'pen' : 'eraser'; renderToolbarOnly(); break;
     case 'mode-keys': toggleMode('keys'); break;
-    case 'undo': Writer.undo(); break;
-    case 'redo': Writer.redo(); break;
-    case 'clear': Writer.clear(); break;
-    case 'addwritten': await Writer.add(pageId); break;
-    case 'saypreview': Voice.speak(splitLine(Writer.pick.fr)[0]); break;
+    case 'undo': Sheet.undo(); break;
+    case 'redo': Sheet.redo(); break;
+    case 'clear': Sheet.clear(); break;
     case 'addtyped': { const i = $('#typeFr'); if (i.value.trim()) { await addEntry(pageId, i.value); i.value = ''; i.focus(); } break; }
-    case 'cover': S.covered = !S.covered; $('.paper').classList.toggle('covered', S.covered); renderToolbarOnly(); break;
+    case 'cover': S.covered = !S.covered; $('.paper').classList.toggle('covered', S.covered); Sheet.redraw(); renderToolbarOnly(); break;
     case 'playall': playPage(pid, pageId); break;
     case 'slow': prefs.slow = !prefs.slow; savePrefs(); renderToolbarOnly(); break;
     case 'accent': prefs.accent = prefs.accent === 'fr-CA' ? 'fr-FR' : 'fr-CA'; savePrefs(); renderToolbarOnly(); toast(prefs.accent === 'fr-CA' ? 'Canadian French voice' : 'France French voice'); break;
@@ -1089,8 +1189,8 @@ function pageMenu(anchor) {
 }
 function deletePage(pid, pageId, returnHome = false) {
   const page = S.data[pid].pages[pageId]; if (!page) return;
-  const es = entriesOf(pid, pageId);
-  if (!confirm(`Delete “${page.title || 'Untitled'}” and its ${es.length} ${es.length === 1 ? 'line' : 'lines'}? This can’t be undone.`)) return;
+  const es = entriesOf(pid, pageId), n = wordsOf(pid, page).length;
+  if (!confirm(`Delete “${page.title || 'Untitled'}” and its ${n} ${n === 1 ? 'word' : 'words'}? This can’t be undone.`)) return;
   delete S.data[pid].pages[pageId]; es.forEach(e => delete S.data[pid].entries[e.id]);
   Store.del(pid, ['page:' + pageId, ...es.map(e => 'entry:' + e.id)]);
   if (returnHome) go('#/' + pid);
@@ -1200,7 +1300,7 @@ async function poll() {
   if (Store.pending || $('.scrim') || $('.pop')) return;
   const active = document.activeElement;
   if (active && active.matches('input') && app.contains(active)) return; // don't interrupt typing
-  if (Writer.hasInk() || (window.speechSynthesis && speechSynthesis.speaking)) return;
+  if (Sheet.busyNow() || (window.speechSynthesis && speechSynthesis.speaking)) return;
   try {
     const before = JSON.stringify([S.profiles, S.data]);
     S.profiles = await Store.loadProfiles();

@@ -71,6 +71,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .toolbar::-webkit-scrollbar { display: none; }
 .tool { min-width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; padding: 0 8px; flex: none; font-size: .85rem; font-weight: 600; }
 .tool[aria-pressed="true"] { background: var(--tool-active); }
+.tool.labeled { display: flex; align-items: center; gap: 6px; padding: 0 12px; }
 .tool:disabled { opacity: .35; }
 .sep { width: 1px; height: 26px; background: #55575e; margin: 0 8px; flex: none; }
 .swatch { width: 32px; height: 32px; border-radius: 50%; margin: 0 4px; flex: none; border: 3px solid transparent; }
@@ -273,6 +274,7 @@ const I = {
   undo: '<svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 010 12"/></svg>',
   redo: '<svg viewBox="0 0 24 24"><path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 000 12"/></svg>',
   eraser: '<svg viewBox="0 0 24 24"><path d="M15 4l5 5-10 10H6l-3-3z"/><path d="M10 9l5 5M13 20h8"/></svg>',
+  scribble: '<svg viewBox="0 0 24 24"><path d="M3 17c3-7 5-7 6-3s2 3 4-1 4-5 5-2 1 4 3 3"/></svg>',
   clear: '<svg viewBox="0 0 24 24"><path d="M7 21h10M5 15l7-11 7 11-4 3H9z"/></svg>',
   eye: '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>',
@@ -583,7 +585,7 @@ const Sheet = {
     if (this.erasing(e)) { this.cur.erased = []; this.showHover(e); this.erase(e); return; }
     this.hover.hidden = true;
     const s = { id: uid(), c: S.ink, t0: Date.now(), pts: [] };
-    if (this.free(e)) s.r = 'free';
+    if (this.tool === 'free' || this.free(e)) s.r = 'free'; // Free pen in the toolbar: plain ink
     this.cur.stroke = s;
     this.addPoint(s, e);
     this.ink.strokes.push(s);
@@ -1069,7 +1071,8 @@ function renderToolbarOnly() {
   const swatches = [...new Set([prof(S.me).color, ...INKS])].slice(0, 5);
   bar.innerHTML = `
     ${mine ? `
-      <button class="tool" aria-pressed="${S.inputMode === 'pen' && Sheet.tool === 'pen'}" data-act="mode-pen" aria-label="Write with the S Pen">${I.pen}</button>
+      <button class="tool" aria-pressed="${S.inputMode === 'pen' && Sheet.tool === 'pen'}" data-act="mode-pen" aria-label="French pen: words are read and get a pronunciation">${I.pen}</button>
+      <button class="tool labeled" aria-pressed="${Sheet.tool === 'free'}" data-act="freepen" aria-label="Free pen: plain ink, not read">${I.scribble}Free</button>
       <button class="tool" aria-pressed="${Sheet.tool === 'eraser'}" data-act="eraser" aria-label="Eraser">${I.eraser}</button>
       <button class="tool" aria-pressed="${S.padOpen && S.inputMode === 'keys'}" data-act="mode-keys" aria-label="Type">${I.keyboard}</button>
       <span class="sep"></span>
@@ -1191,6 +1194,7 @@ app.addEventListener('click', async ev => {
     }
     case 'pagemenu': pageMenu(t); break;
     case 'mode-pen': Sheet.tool = 'pen'; toggleMode('pen'); break;
+    case 'freepen': Sheet.tool = Sheet.tool === 'free' ? 'pen' : 'free'; renderToolbarOnly(); break;
     case 'eraser': Sheet.tool = Sheet.tool === 'eraser' ? 'pen' : 'eraser'; renderToolbarOnly(); break;
     case 'mode-keys': toggleMode('keys'); break;
     case 'undo': Sheet.undo(); break;

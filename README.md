@@ -49,7 +49,10 @@ English-style pronunciation (from Wiktionary) that you can tap to hear in a Fren
   writing is never changed: mistakes get a red **highlighter** mark, and the **correction is shown** in a red
   tag next to the pronunciation box (e.g. `merc → merci`, `content → contente`, or `→ J'aime les pommes`
   when the French doesn't say what your English says). Tap the pronunciation box for the explanation, then
-  fix it yourself by rubbing it out and rewriting it.
+  fix it yourself by rubbing it out and rewriting it. Tap **✕** on a correction to **ignore** it; it won't come
+  back for that line unless you change the French or the English.
+- **Aa** in the toolbar sets the size of the printed text on the page (pronunciation boxes, corrections,
+  arrows, typed lines, title): Small, Normal, Large or Extra large. The page fills the full screen width.
   - **Spelling and grammar**, for single words and whole sentences, come from LanguageTool's free checker.
     In a sentence, just the wrong words are highlighted.
   - **Meaning**: a single word is checked with English Wiktionary. A sentence is translated by a free translator

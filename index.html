@@ -96,9 +96,10 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 
 /* ---------- desk + paper ---------- */
 .desk { flex: 1; overflow: auto; padding: 24px 16px 40px; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
+.desk.page-desk { padding: 0; } /* a notebook page fills the screen edge to edge */
 .paper {
-  --pad-l: 96px; --pad-r: 28px;
-  position: relative; max-width: 1180px; margin: 0 auto; min-height: calc(100% - 8px);
+  --pad-l: 96px; --pad-r: 28px; --fs: 1; /* --fs: text size chosen with the Aa button */
+  position: relative; margin: 0 auto; min-height: 100%;
   display: flex; flex-direction: column;
   background-color: var(--paper);
   background-image: linear-gradient(to bottom, transparent calc(var(--line) - 1px), var(--rule) calc(var(--line) - 1px));
@@ -115,11 +116,11 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .page-head { height: calc(var(--line) * 2); display: flex; align-items: flex-end; gap: 24px; padding-bottom: 10px; position: relative; }
 .page-head::after { content: ''; position: absolute; left: -24px; right: 0; bottom: 4px; height: 2px; background: var(--ink); opacity: .55; border-radius: 2px; }
 .page-title {
-  font-family: var(--hand); font-size: 2rem; color: var(--ink); border: 0; background: transparent; padding: 0;
+  font-family: var(--hand); font-size: calc(2rem * var(--fs, 1)); color: var(--ink); border: 0; background: transparent; padding: 0;
   flex: 1; min-width: 0; line-height: 1.1;
 }
 .page-title::placeholder { color: var(--ink); opacity: .35; }
-.page-date { font-family: var(--hand); font-size: 1.5rem; color: var(--ink); white-space: nowrap; }
+.page-date { font-family: var(--hand); font-size: calc(1.5rem * var(--fs, 1)); color: var(--ink); white-space: nowrap; }
 
 /* Each line takes two ruled lines, like the notebook:  que → than
                                                           kuh            */
@@ -134,10 +135,10 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .row.en-first .sound { grid-column: 3 / 4; }
 .row .speak { grid-row: 1 / 3; grid-column: 4; }
 .row .more { grid-row: 1 / 3; grid-column: 5; }
-.cell { font-family: var(--hand); font-size: 1.55rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--c, var(--ink)); margin-bottom: 7px; }
-.cell.arrow { font-size: 1.35rem; text-align: center; }
+.cell { font-family: var(--hand); font-size: calc(1.55rem * var(--fs, 1)); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--c, var(--ink)); margin-bottom: 7px; }
+.cell.arrow { font-size: calc(1.35rem * var(--fs, 1)); text-align: center; }
 .cell.fr { cursor: text; }
-.cell.sound { font-size: 1.3rem; display: flex; align-items: baseline; gap: 4px; opacity: .8; }
+.cell.sound { font-size: calc(1.3rem * var(--fs, 1)); display: flex; align-items: baseline; gap: 4px; opacity: .8; }
 .cell.sound[data-speak] { cursor: pointer; }
 .cell.sound.pending { opacity: .45; }
 .cell.sound .guess { font-family: var(--ui); font-size: .75rem; opacity: .7; }
@@ -157,7 +158,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .ink-marks { position: absolute; inset: 0; pointer-events: none; }
 .ink-arrow {
   position: absolute; display: flex; align-items: flex-end; padding-bottom: 6px;
-  font-family: var(--hand); font-size: 1.7rem; line-height: 1; color: var(--c, var(--ink));
+  font-family: var(--hand); font-size: calc(1.7rem * var(--fs, 1)); line-height: 1; color: var(--c, var(--ink));
 }
 /* the locked pronunciation box under each word: read-only, tap to hear it */
 .ink-under { /* the line under a word: its pronunciation box, then any correction */
@@ -166,13 +167,19 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .ink-box {
   pointer-events: auto; height: 100%; padding: 0 12px 0 9px;
   display: flex; align-items: center; gap: 6px; border-radius: 9px; background: var(--chip); border: 1px solid var(--hair);
-  font-family: var(--hand); font-size: 1.25rem; color: var(--c, var(--ink)); white-space: nowrap;
+  font-family: var(--hand); font-size: calc(1.25rem * var(--fs, 1)); color: var(--c, var(--ink)); white-space: nowrap;
 }
 /* the correction, shown beside it in red like a teacher's note; your own ink is never changed */
 .ink-fix {
   height: 100%; display: flex; align-items: center; padding: 0 10px; border-radius: 9px; white-space: nowrap;
-  font-family: var(--hand); font-size: 1.25rem; color: #d42a2a; background: rgba(255, 70, 70, .08); border: 1px dashed rgba(212, 42, 42, .55);
+  font-family: var(--hand); font-size: calc(1.25rem * var(--fs, 1)); color: #d42a2a; background: rgba(255, 70, 70, .08); border: 1px dashed rgba(212, 42, 42, .55);
+  gap: 6px; padding-right: 2px;
 }
+.ink-ignore { /* ✕ on a correction: ignore it */
+  pointer-events: auto; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px;
+  font-family: var(--ui); font-size: .95rem; color: #9b3a3a;
+}
+.ink-ignore:active { background: rgba(212, 42, 42, .12); }
 .ink-box svg { width: 13px; height: 13px; color: var(--muted); opacity: .6; }
 .ink-box.playing { box-shadow: 0 0 0 2px var(--c, var(--ink)); }
 /* highlighter over a French word that doesn't look right for its English */
@@ -289,7 +296,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   .paper::before { left: 40px; }
   .row { grid-template-columns: minmax(0,1fr) 20px minmax(0,1fr) 40px 32px; column-gap: 8px; }
   .row.readonly { grid-template-columns: minmax(0,1fr) 20px minmax(0,1fr) 40px; }
-  .cell { font-size: 1.3rem; }
+  .cell { font-size: calc(1.3rem * var(--fs, 1)); }
   .page-title { font-size: 1.6rem; }
   .page-date { font-size: 1.1rem; }
 }
@@ -518,6 +525,8 @@ const Sheet = {
   dirty: new Set(), enDirty: new Set(), busy: {}, token: {}, jtoken: {}, readTimer: null, saveTimer: null, nearTimer: null, swallowUntil: 0,
   get page() { return S.data[this.pid]?.pages[this.pageId]; },
   get ink() { const pg = this.page; return pg ? (pg.ink = pg.ink || { strokes: [], lines: {} }) : { strokes: [], lines: {} }; },
+  // x is stored as a share of this width (px), fixed per page, so a wider or narrower page never stretches the writing
+  get XW() { return this.ink.xw || this.W; },
   mount(el, pid, pageId, readonly) {
     if (pid !== this.pid || pageId !== this.pageId) {
       this.done = []; this.undone = []; this.cur = null; this.dirty.clear(); this.enDirty.clear(); this.busy = {}; this.extra = 0; this.sel = null;
@@ -560,7 +569,16 @@ const Sheet = {
     this.observer = new ResizeObserver(() => this.fit());
     this.observer.observe(el);
     if (desk) this.observer.observe(desk);
-    this.measure(); this.grow(); this.fit();
+    this.measure();
+    const ink = this.ink;
+    if (!ink.xw) {
+      // Pages written before the page went full width measured x against the old, narrower page:
+      // pin that width so existing writing keeps its size and place.
+      const ps = getComputedStyle(el.parentElement), pads = parseFloat(ps.paddingLeft) + parseFloat(ps.paddingRight);
+      ink.xw = ink.strokes.length && desk ? Math.round(Math.min(1180, desk.clientWidth - 32) - pads) : Math.round(this.W);
+      if (ink.strokes.length && !readonly) this.save();
+    }
+    this.grow(); this.fit();
     if (this.dirty.size && !this.readTimer) this.schedule(0);
   },
   screen() { const desk = $('.desk'); return Math.ceil((desk ? desk.clientHeight : 800) / this.z / this.L); },
@@ -628,7 +646,7 @@ const Sheet = {
     this.sawPen();
     if (this.readonly) return;
     if (this.cur) { e.preventDefault(); return; }
-    if (e.target.closest('.ink-box')) return; // a pen tap on a pronunciation box plays it
+    if (e.target.closest('.ink-box, .ink-ignore')) return; // a pen tap on a pronunciation box (or ✕) works as a tap
     e.preventDefault(); e.stopPropagation();
     try { this.el.setPointerCapture(e.pointerId); } catch (err) { }
     clearTimeout(this.readTimer); this.readTimer = null; // still writing: wait before reading
@@ -655,7 +673,7 @@ const Sheet = {
   },
   addPoint(s, e) {
     const r = this.rect;
-    s.pts.push(Math.round((e.clientX - r.left) / r.width * 1e4) / 1e4, Math.round((e.clientY - r.top) / this.z / this.L * 1e3) / 1e3,
+    s.pts.push(Math.round((e.clientX - r.left) / this.z / this.XW * 1e4) / 1e4, Math.round((e.clientY - r.top) / this.z / this.L * 1e3) / 1e3,
       Math.round((e.pressure || 0.5) * 100) / 100, Math.round(e.timeStamp - this.cur.ts0));
   },
   draw(e) {
@@ -703,7 +721,7 @@ const Sheet = {
       for (let k = 0; k < s.pts.length; k += 4) { minX = Math.min(minX, s.pts[k]); maxX = Math.max(maxX, s.pts[k]); }
     }
     if (!c) return null;
-    const W = this.W;
+    const W = this.XW;
     return { minX: minX * W, maxX: maxX * W, c };
   },
   arrowAt(line) {
@@ -717,7 +735,7 @@ const Sheet = {
     const sorted = [...ys].sort((a, b) => a - b);
     let line = Math.max(0, Math.floor(sorted[sorted.length >> 1]));
     if (s.r === 'free') { s.l = line; return; } // written with the S Pen button held: just ink
-    const W = this.W, minX = Math.min(...xs) * W, maxX = Math.max(...xs) * W;
+    const W = this.XW, minX = Math.min(...xs) * W, maxX = Math.max(...xs) * W;
     // an accent or the dot of an i, written high, belongs to the word on the line below it
     if ((sorted[sorted.length - 1] - sorted[0]) < 0.35 && maxX - minX < this.L * 0.35) {
       const below = this.bounds(line + 1);
@@ -746,7 +764,7 @@ const Sheet = {
     for (const l of en) this.judge(l);
   },
   inkOf(strokes, line) { // strokes as the handwriting reader wants them: [[xs], [ys], [times]] in px
-    const W = this.W, L = this.L, t0 = Math.min(...strokes.map(s => s.t0));
+    const W = this.XW, L = this.L, t0 = Math.min(...strokes.map(s => s.t0));
     let minX = Infinity; for (const s of strokes) for (let k = 0; k < s.pts.length; k += 4) minX = Math.min(minX, s.pts[k] * W);
     const ink = strokes.map(s => {
       const xs = [], ys = [], ts = [];
@@ -771,6 +789,8 @@ const Sheet = {
     else try { const r = await Pron.pronounce(fr); Object.assign(res, { sound: r.sound, ipa: r.ipa, guessed: r.guessed }); } catch (e) { }
     if (token !== this.token[line]) return;
     delete this.busy[line];
+    const prev = this.ink.lines[line];
+    if (prev && prev.ignored) res.ignored = prev.ignored; // still applies if the word reads the same
     this.ink.lines[line] = res;
     this.marks(); this.save();
     this.judge(line);
@@ -789,7 +809,9 @@ const Sheet = {
     const fr = res.fr, check = await Judge.check(fr, list.slice(0, 3), res.guessed);
     const cur = this.ink.lines[line];
     if (token !== this.jtoken[line] || !cur || cur.fr !== fr) return;
-    if (check.v === 'wrong') cur.check = { en: list[0], issues: check.issues, meaning: check.meaning }; else delete cur.check;
+    // a suggestion you chose to ignore stays ignored until the French or the English changes
+    const ignored = cur.ignored === fr + '|' + Judge.norm(list[0]);
+    if (check.v === 'wrong' && !ignored) cur.check = { en: list[0], issues: check.issues, meaning: check.meaning }; else delete cur.check;
     this.marks(); this.save();
   },
   say(line) { // tap a pronunciation box: hear the word (or try reading it again)
@@ -797,6 +819,14 @@ const Sheet = {
     if (!res || res.failed) { if (!this.readonly) { this.dirty.add(line); this.schedule(0); } return; }
     markPlaying('ink:' + line); Voice.speak(res.fr, () => markPlaying(null));
     if (res.check) toast(this.explain(res), 'OK', () => { });
+  },
+  ignore(line) { // ✕ on a correction: drop the highlight and the suggestion for this word
+    const res = this.ink.lines[line];
+    if (!res || !res.check || this.readonly) return;
+    res.ignored = res.fr + '|' + Judge.norm(res.check.en);
+    delete res.check;
+    this.marks(); this.save();
+    toast('Suggestion ignored. It won’t come back unless you change this line.');
   },
   explain(res) { // what's wrong, with the correction: "Spelling: “merc” → “merci”"
     const c = res.check, parts = [];
@@ -819,7 +849,7 @@ const Sheet = {
     let boxes = whole;
     if (c.issues && c.issues.length && !c.meaning && !c.why) {
       // split the French ink into words by the gaps between strokes
-      const W = this.W, words = [], spans = this.ink.strokes.filter(s => s.r === 'fr' && s.l === line)
+      const W = this.XW, words = [], spans = this.ink.strokes.filter(s => s.r === 'fr' && s.l === line)
         .map(s => { const v = this.span(s); return [v[3] * W, v[4] * W]; }).sort((p, q) => p[0] - q[0]);
       for (const [a, z] of spans) {
         const last = words[words.length - 1];
@@ -850,7 +880,8 @@ const Sheet = {
         <div class="ink-under" style="left:${b.minX}px;top:${(l + 1) * L}px">
           <button class="ink-box" data-ink-line="${l}" style="--c:${b.c}" title="${esc(title)}"
             aria-label="${esc(busy ? 'Reading' : res.failed ? 'Couldn’t read, tap to retry' : 'Hear ' + res.fr + ', sounds like ' + label)}">${LOCK}${esc(label)}</button>
-          ${fix ? `<span class="ink-fix" aria-label="Correction: ${esc(fix)}">${esc(fix)}</span>` : ''}
+          ${!busy && res.check ? `<span class="ink-fix" aria-label="Correction: ${esc(fix || 'check this')}">${esc(fix || 'check this')}
+            <button class="ink-ignore" data-ink-ignore="${l}" aria-label="Ignore this suggestion" title="Ignore">✕</button></span>` : ''}
         </div>`;
     }
     this.marksEl.innerHTML = html;
@@ -877,7 +908,7 @@ const Sheet = {
     c.ex = x; c.ey = y;
     const steps = Math.max(1, Math.ceil(Math.hypot(x - fx, y - fy) / (r / 2)));
     const minX = Math.min(x, fx) - r, maxX = Math.max(x, fx) + r, minY = Math.min(y, fy) - r, maxY = Math.max(y, fy) + r;
-    const st = this.ink.strokes, W = this.W, L = this.L;
+    const st = this.ink.strokes, W = this.XW, L = this.L;
     for (let i = st.length - 1; i >= 0; i--) {
       const s = st[i], b = this.span(s); // [top, bottom, _, left, right] in lines / page widths
       if (b[4] * W < minX - 3 || b[3] * W > maxX + 3 || b[1] * L < minY - 3 || b[0] * L > maxY + 3) continue;
@@ -890,7 +921,7 @@ const Sheet = {
   },
   erased() { const c = this.cur; if (c && c.repaint) { c.repaint = false; this.redraw(); this.marks(); } },
   hits(s, x, y, r) {
-    const p = s.pts, W = this.W, L = this.L, reach = (r + 3) * (r + 3); // 3 ≈ half the widest pen line
+    const p = s.pts, W = this.XW, L = this.L, reach = (r + 3) * (r + 3); // 3 ≈ half the widest pen line
     let ax = p[0] * W, ay = p[1] * L;
     if ((ax - x) * (ax - x) + (ay - y) * (ay - y) < reach) return true;
     for (let k = 4; k < p.length; k += 4) {
@@ -916,7 +947,7 @@ const Sheet = {
   setTool(t) { this.tool = t; if (t !== 'select') this.select(null); },
   pagePoint(e) { return [(e.clientX - this.rect.left) / this.z, (e.clientY - this.rect.top) / this.z]; },
   selectDown(e) {
-    if (e.target.closest('.sel-bar, .ink-box')) return true; // let taps on those buttons through
+    if (e.target.closest('.sel-bar, .ink-box, .ink-ignore')) return true; // let taps on those buttons through
     const onBox = e.target.closest('.sel-box');
     if (!onBox && e.pointerType !== 'pen') return true; // fingers drag a selection; anywhere else they scroll
     e.preventDefault(); e.stopPropagation();
@@ -1009,7 +1040,7 @@ const Sheet = {
     this.schedule(300); this.redraw(); this.marks(); this.save(); this.grow(); this.renderSel();
   },
   shift(ids, dx, dl) {
-    const set = new Set(ids), fx = dx / this.W;
+    const set = new Set(ids), fx = dx / this.XW;
     for (const s of this.ink.strokes) {
       if (!set.has(s.id)) continue;
       for (let k = 0; k < s.pts.length; k += 4) {
@@ -1057,7 +1088,7 @@ const Sheet = {
 
   // ---- drawing: a smooth curve through the midpoints of the samples, width from pen pressure ----
   size(p) { return 1.4 + p * 3.4; },
-  px(s, i) { const k = i * 4; return [s.pts[k] * this.W, s.pts[k + 1] * this.L, s.pts[k + 2]]; },
+  px(s, i) { const k = i * 4; return [s.pts[k] * this.XW, s.pts[k + 1] * this.L, s.pts[k + 2]]; },
   style(s) {
     const c = this.ctx; c.strokeStyle = c.fillStyle = s.c || prof(this.pid).color; c.lineCap = 'round'; c.lineJoin = 'round';
     c.filter = S.covered && s.r === 'en' ? 'blur(6px)' : 'none'; // the eye button hides your English
@@ -1144,7 +1175,7 @@ const Zoom = {
   },
   size() { // fix the page's own width, so zooming in makes it bigger instead of squeezing it to fit
     const desk = $('.desk'), paper = $('.paper'); if (!desk || !paper) return;
-    paper.style.width = Math.min(1180, desk.clientWidth - 32) + 'px';
+    paper.style.width = desk.clientWidth + 'px'; // the page uses the full width of the screen
     paper.style.zoom = this.z;
   },
   set(z, fx, fy, settle = true) {
@@ -1159,6 +1190,7 @@ const Zoom = {
   },
   mount(desk) {
     this.size();
+    new ResizeObserver(() => { if (desk.isConnected) this.size(); }).observe(desk); // e.g. a scrollbar appearing
     let pinch = null;
     const mid = (a, b) => [(a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2];
     const gap = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
@@ -1500,7 +1532,7 @@ function renderPage() {
       <button class="icon-btn" data-act="pagemenu" aria-label="Page options">${I.more}</button>
     </header>
     <nav class="toolbar" aria-label="Tools"></nav>
-    <main class="desk"><div class="paper ${S.covered ? 'covered' : ''}">
+    <main class="desk page-desk"><div class="paper ${S.covered ? 'covered' : ''}" style="--fs:${prefs.fs || 1}">
       <div class="paper-body"></div>
       <section class="ink-sheet" aria-label="Handwriting"></section>
     </div></main>
@@ -1603,6 +1635,7 @@ function renderToolbarOnly() {
     <button class="tool" data-act="zoomout" aria-label="Zoom out">${I.minus}</button>
     <button class="tool" data-act="zoomreset" aria-label="Reset zoom to 100%">${Math.round(Zoom.z * 100)}%</button>
     <button class="tool" data-act="zoomin" aria-label="Zoom in">${I.plus}</button>
+    <button class="tool" data-act="fontsize" aria-label="Text size" title="Text size">Aa</button>
   `;
   Palette.render(); // the floating palette shows the same tool and colour
 }
@@ -1689,6 +1722,7 @@ app.addEventListener('click', async ev => {
   if (t.dataset.open) { go(`#/${S.tab || S.me}/${t.dataset.open}`); return; }
   if (t.dataset.ink) { S.ink = t.dataset.ink; LS.set('ink', S.ink); document.documentElement.style.setProperty('--ink', S.ink); Palette.colors = false; renderToolbarOnly(); return; }
   const row = t.closest('.row');
+  if (t.dataset.inkIgnore !== undefined) { Sheet.ignore(+t.dataset.inkIgnore); return; }
   if (t.dataset.inkLine !== undefined) { Sheet.say(+t.dataset.inkLine); return; }
   if (row && t.matches('[data-speak]')) {
     const e = S.data[pid].entries[row.dataset.id];
@@ -1710,6 +1744,14 @@ app.addEventListener('click', async ev => {
     case 'mode-pen': Sheet.setTool('pen'); toggleMode('pen'); break;
     case 'freepen': Sheet.setTool(Sheet.tool === 'free' ? 'pen' : 'free'); renderToolbarOnly(); break;
     case 'eraser': Sheet.setTool(Sheet.tool === 'eraser' ? 'pen' : 'eraser'); renderToolbarOnly(); break;
+    case 'fontsize': { // size of the printed text on the page: boxes, corrections, arrows, typed lines, title
+      const sizes = [['Small', 0.85], ['Normal', 1], ['Large', 1.2], ['Extra large', 1.4]], cur = prefs.fs || 1;
+      popover(t, sizes.map(([label, v]) => ({ label: (v === cur ? '✓ ' : '    ') + label, run: () => {
+        prefs.fs = v; savePrefs();
+        $('.paper')?.style.setProperty('--fs', v);
+      } })));
+      break;
+    }
     case 'palette-open': Palette.toggle(true); break;
     case 'palette-min': Palette.toggle(false); break;
     case 'palette-colors': Palette.colors = !Palette.colors; Palette.render(); break;

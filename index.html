@@ -128,7 +128,6 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   width: 100%; border: 0; background: transparent; font: inherit; color: inherit; padding: 0; min-width: 0;
 }
 .cell input::placeholder { color: var(--c, var(--ink)); opacity: .35; }
-.cell input.suggested { font-style: italic; opacity: .6; }
 .speak, .more { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px; color: var(--muted); align-self: center; }
 .speak:active, .more:active { background: var(--chip); }
 .speak.playing { color: var(--c, var(--ink)); }
@@ -168,8 +167,6 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .cands[data-cands="fr"] { grid-area: frc; }
 .cands[data-cands="en"] { grid-area: enc; }
 .cands .hint { color: var(--muted); font-size: .85rem; }
-.cand { height: 36px; padding: 0 12px; border-radius: 18px; background: var(--chip); font-family: var(--hand); font-size: 1.2rem; }
-.cand[aria-pressed="true"] { background: var(--ink); color: #fff; }
 .say-preview { height: 36px; padding: 0 10px; border-radius: 18px; display: flex; align-items: center; gap: 6px; font-family: var(--hand); font-size: 1.2rem; color: var(--ink); }
 .say-preview svg { width: 18px; height: 18px; }
 .add-line { grid-area: add; align-self: stretch; padding: 0 24px; }
@@ -651,46 +648,10 @@ function splitLine(fr, en = '') {
   return [fr, en];
 }
 
-// English meaning suggestions from English Wiktionary, used when no meaning was written
-const Meaning = {
-  cache: new Map(),
-  async suggest(fr) {
-    const key = fr.trim().toLowerCase().replace(/’/g, "'");
-    if (!key) return '';
-    if (this.cache.has(key)) return this.cache.get(key);
-    const saved = LS.get('mean:' + key, null);
-    if (saved) { this.cache.set(key, saved); return saved; }
-    let out = '';
-    for (const title of [...new Set([key, fr.trim()])]) {
-      try {
-        const r = await fetch('https://en.wiktionary.org/api/rest_v1/page/definition/' + encodeURIComponent(title.replace(/ /g, '_')));
-        if (!r.ok) continue;
-        out = this.pick((await r.json()).fr || []);
-        if (out) break;
-      } catch (e) { }
-    }
-    this.cache.set(key, out);
-    if (out) LS.set('mean:' + key, out);
-    return out;
-  },
-  pick(sections) {
-    const strip = html => new DOMParser().parseFromString(html || '', 'text/html').body.textContent.replace(/\s+/g, ' ').trim();
-    const glosses = [];
-    for (const sec of sections) for (const d of sec.definitions || []) {
-      const g = strip(d.definition).replace(/\s*\([^)]*\)/g, '').replace(/[.:]$/, '').trim(); // "that (introduces a clause)" → "that"
-      if (g && !glosses.includes(g)) glosses.push(g);
-    }
-    if (!glosses.length) return '';
-    const short = g => { g = g.split(/;/)[0].trim(); return g.length > 48 ? g.slice(0, 46).replace(/[\s,]+\S*$/, '') + '…' : g; };
-    const first = short(glosses[0]), second = glosses[1] && short(glosses[1]);
-    return second && first.length + second.length < 30 && second !== first ? `${first}, ${second}` : first;
-  },
-};
-
 // The writing strip at the bottom of your page: French box → English box → Add
 const Writer = {
   pageId: null, pads: { fr: new InkPad('fr'), en: new InkPad('en') },
-  found: { fr: [], en: [] }, pick: { fr: '', en: '' }, state: { fr: '', en: '' },
+  pick: { fr: '', en: '' }, state: { fr: '', en: '' },
   timers: {}, ticket: { fr: 0, en: 0 }, reading: { fr: null, en: null }, sound: null,
   mount(el, pageId) {
     if (pageId !== this.pageId) { this.pageId = pageId; this.reset(); }
@@ -710,7 +671,7 @@ const Writer = {
   reset() {
     for (const k of ['fr', 'en']) {
       clearTimeout(this.timers[k]); this.timers[k] = null; this.ticket[k]++;
-      this.pads[k].reset(); this.found[k] = []; this.pick[k] = ''; this.state[k] = ''; this.reading[k] = null;
+      this.pads[k].reset(); this.pick[k] = ''; this.state[k] = ''; this.reading[k] = null;
     }
     this.sound = null;
     this.renderCands();
@@ -725,20 +686,19 @@ const Writer = {
     clearTimeout(this.timers[k]); this.timers[k] = null;
     const pad = this.pads[k], ticket = ++this.ticket[k];
     if (!pad.strokes.length) {
-      this.found[k] = []; this.pick[k] = ''; this.state[k] = '';
+      this.pick[k] = ''; this.state[k] = '';
       if (k === 'fr') this.sound = null;
       this.renderCands(); return (this.reading[k] = Promise.resolve());
     }
     this.state[k] = 'reading'; this.renderCands();
     return (this.reading[k] = readHandwriting(pad.ink(), pad.rect.width, pad.rect.height, k).then(list => {
       if (ticket !== this.ticket[k]) return; // a newer stroke started a newer read
-      this.state[k] = list ? '' : 'failed';
-      this.found[k] = list || []; this.pick[k] = this.found[k][0] || '';
+      this.pick[k] = (list && list[0]) || '';
+      this.state[k] = !list ? 'failed' : this.pick[k] ? 'ready' : '';
       this.renderCands();
       if (k === 'fr') this.preview();
     }));
   },
-  choose(k, i) { this.pick[k] = this.found[k][i] || ''; this.renderCands(); if (k === 'fr') this.preview(); },
   async preview() { // how the French will sound, shown before the line is added
     const fr = splitLine(this.pick.fr)[0];
     this.sound = null; this.renderCands();
@@ -750,8 +710,9 @@ const Writer = {
       const box = document.querySelector(`[data-cands="${k}"]`); if (!box) continue;
       if (this.state[k] === 'reading') box.innerHTML = '<span class="hint">Reading…</span>';
       else if (this.state[k] === 'failed') box.innerHTML = '<span class="hint">Couldn’t read that. Check your connection, or use the keyboard.</span>';
-      else box.innerHTML = this.found[k].map((w, i) => `<button class="cand" lang="${k}" aria-pressed="${w === this.pick[k]}" data-cand="${k}|${i}">${esc(w)}</button>`).join('') +
+      else if (this.state[k] === 'ready') box.innerHTML = '<span class="hint">Handwriting ready. Tap Add line to add it.</span>' +
         (k === 'fr' && this.sound ? `<button class="say-preview" data-act="saypreview" aria-label="Hear it">${I.speaker}${esc(this.sound)}</button>` : '');
+      else box.innerHTML = '';
     }
   },
   async add(pageId) {
@@ -774,21 +735,14 @@ const Writer = {
 async function addEntry(pageId, fr, en = '') {
   [fr, en] = splitLine(fr, en); if (!fr) return;
   const pid = S.me;
-  const e = { id: uid(), pageId, fr, en, enSuggested: false, ipa: '', sound: '', guessed: false, color: S.ink, created: Date.now() };
+  const e = { id: uid(), pageId, fr, en, ipa: '', sound: '', guessed: false, color: S.ink, created: Date.now() };
   S.data[pid].entries[e.id] = e;
   S.justAdded = e.id;
   touchPage(pid, pageId);
   renderPageBody();
   scrollToEnd();
   Store.put(pid, 'entry', e);
-  await Promise.all([fillSound(e), en ? null : fillMeaning(e)]);
-}
-async function fillMeaning(e) {
-  const m = await Meaning.suggest(e.fr);
-  if (!m || e.en || S.data[S.me].entries[e.id] !== e) return; // nothing found, already has a meaning, or deleted
-  e.en = m; e.enSuggested = true;
-  updateRow(e);
-  Store.put(S.me, 'entry', e);
+  await fillSound(e);
 }
 async function fillSound(e, force) {
   if (e.sound && !force) return;
@@ -934,8 +888,7 @@ function rowHTML(e, mine) {
   const c = e.color || prof(S.route.pid).color;
   const fr = `<div class="cell fr" ${mine ? 'data-edit-fr' : ''} lang="fr">${esc(e.fr)}</div>`;
   const en = mine
-    ? `<div class="cell en"><input class="${e.enSuggested ? 'suggested' : ''}" value="${esc(e.en)}" placeholder="meaning" data-en aria-label="English meaning"
-        title="${e.enSuggested ? 'Suggested by Wiktionary. Change it if it’s not what you meant.' : ''}" autocomplete="off" spellcheck="false"></div>`
+    ? `<div class="cell en"><input value="${esc(e.en)}" placeholder="meaning" data-en aria-label="English meaning" autocomplete="off" spellcheck="false"></div>`
     : `<div class="cell en">${esc(e.en) || '<span style="opacity:.3">—</span>'}</div>`;
   const guess = e.guessed ? '<span class="guess" title="Not in the dictionary, so guessed from the spelling">≈</span>' : '';
   // The pronunciation box under each line: filled in automatically, and yours to correct
@@ -955,6 +908,11 @@ function renderPageBody() {
   const body = $('.paper-body'); if (!body) return;
   const { pid, pageId } = S.route, mine = pid === S.me, page = S.data[pid].pages[pageId];
   const es = entriesOf(pid, pageId);
+  for (const e of es) { // drop meanings that an earlier version filled in from Wiktionary
+    if (!e.enSuggested) continue;
+    e.en = ''; delete e.enSuggested;
+    if (mine) Store.put(pid, 'entry', e);
+  }
   body.innerHTML = `
     <div class="page-head">
       ${mine ? `<input class="page-title" value="${esc(page.title)}" placeholder="Title, e.g. CD1 – (4)" aria-label="Page title">`
@@ -1016,7 +974,6 @@ app.addEventListener('click', async ev => {
   }
   if (row && t.matches('[data-edit-fr]')) { editFr(row.dataset.id, t); return; }
   if (row && t.matches('[data-rowmenu]')) { rowMenu(row.dataset.id, t); return; }
-  if (t.dataset.cand) { const [k, i] = t.dataset.cand.split('|'); Writer.choose(k, +i); return; }
 
   switch (act) {
     case 'settings': openSettings(); break;
@@ -1059,7 +1016,7 @@ app.addEventListener('input', ev => {
   const t = ev.target;
   if (t.matches('[data-en]')) {
     const id = t.closest('.row').dataset.id, e = S.data[S.me].entries[id];
-    e.en = t.value; e.enSuggested = false; t.classList.remove('suggested'); t.title = '';
+    e.en = t.value;
     clearTimeout(enTimers[id]); enTimers[id] = setTimeout(() => Store.put(S.me, 'entry', e), 700);
   }
   if (t.matches('[data-sound]')) { // your own correction of the pronunciation
@@ -1085,9 +1042,8 @@ function editFr(id, cell) {
     const v = inp.value.trim();
     if (save && v && v !== e.fr) {
       e.fr = v; e.sound = ''; e.ipa = '';
-      if (e.enSuggested) { e.en = ''; e.enSuggested = false; } // the old suggestion was for the old word
       updateRow(e); Store.put(S.me, 'entry', e);
-      await Promise.all([fillSound(e, true), e.en ? null : fillMeaning(e)]);
+      await fillSound(e, true);
     }
     else updateRow(e);
   };
@@ -1122,11 +1078,6 @@ function rowMenu(id, anchor) {
     { label: 'Edit French', run: () => editFr(id, document.querySelector(`.row[data-id="${id}"] .fr`)) },
     { label: 'Edit sound spelling', run: () => editSound(id) },
     { label: 'Look up sound again', run: () => { e.sound = ''; e.ipa = ''; updateRow(e); fillSound(e, true); } },
-    { label: 'Suggest a meaning', run: async () => {
-      const m = await Meaning.suggest(e.fr);
-      if (!m) { toast('No meaning found for “' + e.fr + '”.'); return; }
-      e.en = m; e.enSuggested = true; updateRow(e); Store.put(S.me, 'entry', e);
-    } },
     { label: 'Delete line', danger: true, run: () => deleteEntry(id) },
   ]);
 }
@@ -1185,7 +1136,7 @@ function openSettings(first) {
     <div class="field note">${Store.mode === 'remote'
       ? 'Your notes sync through your Vercel storage, so both tablets see the same pages.'
       : 'Notes are saved on this device only. To sync two tablets, connect Upstash Redis to this project in Vercel (see the README).'}
-      Pronunciations come from French Wiktionary (a small ≈ means the word wasn’t found and it was guessed from the spelling). Suggested meanings, shown in grey italics, come from English Wiktionary.</div>
+      Pronunciations come from French Wiktionary (a small ≈ means the word wasn’t found and it was guessed from the spelling).</div>
     <div class="actions">${first ? '' : '<button class="btn" data-close>Cancel</button>'}<button class="btn primary" style="flex:none" data-save>Save</button></div>`;
   modal(html(), (s, close) => {
     const rerender = () => { const scroll = s.firstChild.scrollTop; s.firstChild.innerHTML = html(); s.firstChild.scrollTop = scroll; };

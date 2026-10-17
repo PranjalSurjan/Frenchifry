@@ -45,10 +45,11 @@ English-style pronunciation (from Wiktionary) that you can tap to hear in a Fren
   ```
 - **Write the English meaning by hand** after the arrow. It stays as ink; nothing is ever corrected.
   One word or phrase per line; anything you write to the left of the arrow counts as French.
-- **Mistake highlighter**: once you've written the English, the app checks your French against it. Nothing is
-  ever corrected for you; mistakes just get a red **highlighter** mark. Tap the pronunciation box to see what's
-  wrong and the correction (e.g. `Spelling: "merc" → "merci"`, `Grammar: "content" → "contente"`), then fix it
-  yourself by rubbing it out and rewriting it.
+- **Mistake highlighter**: once you've written the English, the app checks your French against it. Your
+  writing is never changed: mistakes get a red **highlighter** mark, and the **correction is shown** in a red
+  tag next to the pronunciation box (e.g. `merc → merci`, `content → contente`, or `→ J'aime les pommes`
+  when the French doesn't say what your English says). Tap the pronunciation box for the explanation, then
+  fix it yourself by rubbing it out and rewriting it.
   - **Spelling and grammar**, for single words and whole sentences, come from LanguageTool's free checker.
     In a sentence, just the wrong words are highlighted.
   - **Meaning**: a single word is checked with English Wiktionary. A sentence is translated by a free translator

@@ -160,10 +160,18 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   font-family: var(--hand); font-size: 1.7rem; line-height: 1; color: var(--c, var(--ink));
 }
 /* the locked pronunciation box under each word: read-only, tap to hear it */
+.ink-under { /* the line under a word: its pronunciation box, then any correction */
+  position: absolute; display: flex; align-items: center; gap: 8px; height: calc(var(--line) - 16px); margin-top: 8px; pointer-events: none;
+}
 .ink-box {
-  position: absolute; pointer-events: auto; height: calc(var(--line) - 16px); margin-top: 8px; padding: 0 12px 0 9px;
+  pointer-events: auto; height: 100%; padding: 0 12px 0 9px;
   display: flex; align-items: center; gap: 6px; border-radius: 9px; background: var(--chip); border: 1px solid var(--hair);
   font-family: var(--hand); font-size: 1.25rem; color: var(--c, var(--ink)); white-space: nowrap;
+}
+/* the correction, shown beside it in red like a teacher's note; your own ink is never changed */
+.ink-fix {
+  height: 100%; display: flex; align-items: center; padding: 0 10px; border-radius: 9px; white-space: nowrap;
+  font-family: var(--hand); font-size: 1.25rem; color: #d42a2a; background: rgba(255, 70, 70, .08); border: 1px dashed rgba(212, 42, 42, .55);
 }
 .ink-box svg { width: 13px; height: 13px; color: var(--muted); opacity: .6; }
 .ink-box.playing { box-shadow: 0 0 0 2px var(--c, var(--ink)); }
@@ -795,10 +803,16 @@ const Sheet = {
     if (c.why === 'spelling') parts.push(`“${res.fr}” isn’t in the French dictionary. Check the spelling.`); // saved by an older version
     if (c.why === 'meaning') parts.push(`“${res.fr}” doesn’t seem to mean “${c.en}”.`);
     for (const i of c.issues || []) parts.push(`${i.kind}: “${i.word}”${i.fix ? ` → “${i.fix}”` : ''}`);
-    if (c.meaning) parts.push(c.meaning.translated
+    if (c.meaning) parts.push((c.meaning.translated
       ? `Meaning: this reads like “${c.meaning.translated}”, not “${c.en}”.`
-      : `Meaning: “${res.fr}” doesn’t seem to mean “${c.en}”.`);
+      : `Meaning: “${res.fr}” doesn’t seem to mean “${c.en}”.`) + (c.meaning.suggest ? ` In French: “${c.meaning.suggest}”.` : ''));
     return parts.join('   •   ');
+  },
+  fixText(res) { // the correction shown under the word: "merc → merci", or the French for your English
+    const c = res.check;
+    const fixes = (c.issues || []).filter(i => i.fix).map(i => `${i.word} → ${i.fix}`);
+    if (c.meaning && c.meaning.suggest) fixes.push(`→ ${c.meaning.suggest}`);
+    return fixes.join('  ·  ');
   },
   flags(line, res, b) { // highlighter boxes: just the wrong words when they can be matched to your ink, else all of it
     const c = res.check, L = this.L, whole = [{ minX: b.minX, maxX: b.maxX }];
@@ -831,9 +845,13 @@ const Sheet = {
       const label = busy ? '…' : res.failed ? '?' : (res.guessed ? '≈ ' : '') + (res.sound || res.fr);
       const title = busy ? 'Reading…' : res.failed ? 'Couldn’t read this word. Tap to try again.' : res.fr + (res.ipa ? `  /${res.ipa}/` : '');
       if (!busy && res.check) html += this.flags(l, res, b); // highlighter over what doesn't look right
+      const fix = !busy && res.check ? this.fixText(res) : '';
       html += `<div class="ink-arrow" style="--c:${b.c};left:${b.maxX + ARROW_GAP}px;top:${l * L}px;height:${L}px">→</div>
-        <button class="ink-box" data-ink-line="${l}" style="--c:${b.c};left:${b.minX}px;top:${(l + 1) * L}px" title="${esc(title)}"
-          aria-label="${esc(busy ? 'Reading' : res.failed ? 'Couldn’t read, tap to retry' : 'Hear ' + res.fr + ', sounds like ' + label)}">${LOCK}${esc(label)}</button>`;
+        <div class="ink-under" style="left:${b.minX}px;top:${(l + 1) * L}px">
+          <button class="ink-box" data-ink-line="${l}" style="--c:${b.c}" title="${esc(title)}"
+            aria-label="${esc(busy ? 'Reading' : res.failed ? 'Couldn’t read, tap to retry' : 'Hear ' + res.fr + ', sounds like ' + label)}">${LOCK}${esc(label)}</button>
+          ${fix ? `<span class="ink-fix" aria-label="Correction: ${esc(fix)}">${esc(fix)}</span>` : ''}
+        </div>`;
     }
     this.marksEl.innerHTML = html;
     const hint = this.el.querySelector('.sheet-hint'); if (hint) hint.hidden = this.ink.strokes.length > 0;
@@ -1206,11 +1224,11 @@ const Judge = {
     fr = String(fr).trim();
     const key = fr + '|' + ens.map(e => this.norm(e)).join('/') + '|' + !!notInDictionary;
     if (this.cache.has(key)) return this.cache.get(key);
-    const saved = LS.get('judge2:' + key, null); // remembered on this tablet, so nobody is asked twice
+    const saved = LS.get('judge3:' + key, null); // remembered on this tablet, so nobody is asked twice
     if (saved) { this.cache.set(key, saved); return saved; }
     let out = { v: 'unknown' };
     try { out = await this.decide(fr, ens.map(e => this.core(this.norm(e))).filter(Boolean), notInDictionary); } catch (e) { }
-    if (out.v !== 'unknown') { this.cache.set(key, out); LS.set('judge2:' + key, out); }
+    if (out.v !== 'unknown') { this.cache.set(key, out); LS.set('judge3:' + key, out); }
     return out;
   },
   defsCache: new Map(),
@@ -1225,8 +1243,10 @@ const Judge = {
     // LanguageTool unreachable: fall back to French Wiktionary not knowing a single word
     if (!issues && single && notInDictionary) issues = [{ from: 0, to: fr.length, word: fr, kind: 'Spelling', fix: '' }];
     if (issues) for (const i of issues) i.fix = await this.bestFix(i, single ? mine : []);
-    if ((issues && issues.length) || meaning === 'wrong' || (meaning && meaning.translated))
-      return { v: 'wrong', issues: issues || [], meaning: meaning === 'wrong' ? {} : (meaning && meaning.translated ? meaning : null) };
+    let off = meaning === 'wrong' ? {} : (meaning && meaning.translated ? meaning : null);
+    // the French doesn't say what you meant: suggest how your English would be said in French
+    if (off) off = { ...off, suggest: await this.toFrench(mine[0]) };
+    if ((issues && issues.length) || off) return { v: 'wrong', issues: issues || [], meaning: off };
     if (!found || meaning === 'unknown') return { v: 'unknown' };
     return { v: 'ok' };
   },
@@ -1266,6 +1286,15 @@ const Judge = {
     if (listed) return 'ok';
     if (!meanings.length || listed === null) return 'unknown';
     return 'wrong';
+  },
+  async toFrench(en) { // your English in French, from the free translator ('' if it can't)
+    try {
+      const r = await fetch('https://api.mymemory.translated.net/get?langpair=en|fr&q=' + encodeURIComponent(en));
+      if (!r.ok) return '';
+      const j = await r.json();
+      if (String(j.responseStatus) !== '200') return '';
+      return new DOMParser().parseFromString((j.responseData && j.responseData.translatedText) || '', 'text/html').body.textContent.trim();
+    } catch (e) { return ''; }
   },
   async sentenceMeaning(fr, mine) { // 'ok' | 'unknown' | { translated } when it seems to say something else
     let texts;

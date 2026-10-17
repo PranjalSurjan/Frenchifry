@@ -160,7 +160,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   position: absolute; left: 0; top: 0; z-index: 2; width: 8px; height: 8px; margin: -4px 0 0 -4px;
   border-radius: 50%; background: var(--ink); opacity: .5; pointer-events: none; will-change: transform;
 }
-.pen-hover.erase { width: 24px; height: 24px; margin: -12px 0 0 -12px; background: rgba(255,255,255,.55); border: 1.5px solid var(--muted); opacity: 1; }
+.pen-hover.erase { width: 28px; height: 28px; margin: -14px 0 0 -14px; background: rgba(255,255,255,.55); border: 1.5px solid var(--muted); opacity: 1; }
 .pen-hover[hidden] { display: none; }
 /* Select tool: the loop you draw, the dashed box around what's selected, and its little bar */
 .sel-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
@@ -291,7 +291,7 @@ const I = {
   eraser: '<svg viewBox="0 0 24 24"><path d="M15 4l5 5-10 10H6l-3-3z"/><path d="M10 9l5 5M13 20h8"/></svg>',
   scribble: '<svg viewBox="0 0 24 24"><path d="M3 17c3-7 5-7 6-3s2 3 4-1 4-5 5-2 1 4 3 3"/></svg>',
   select: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/></svg>',
-  clear: '<svg viewBox="0 0 24 24"><path d="M7 21h10M5 15l7-11 7 11-4 3H9z"/></svg>',
+  addline: '<svg viewBox="0 0 24 24"><path d="M3 6h11M3 11h11M3 16h11M18 8v8M14 12h8"/></svg>',
   eye: '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>',
   stop: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
@@ -482,7 +482,7 @@ const wordsOf = (pid, page) => !page ? [] : [
 // Saved with the page as ink = { strokes: [{ id, c: colour, l: line, r: 'fr' | 'en' | 'free', t0, pts: [x, y, pressure, ms, …] }],
 // lines: { [line]: { fr, sound, ipa, guessed } } }. x is a share of the page width, y is measured in ruled lines.
 // ======================================================================
-const ARROW_GAP = 10, ARROW_W = 34;
+const ARROW_GAP = 10, ARROW_W = 34, ERASER_R = 14;
 const LOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
 const Sheet = {
   el: null, canvas: null, ctx: null, hover: null, marksEl: null, rect: null, L: 56, rows: 0, observer: null, z: 1, W: 1,
@@ -517,7 +517,13 @@ const Sheet = {
     el.addEventListener('touchmove', hold, opt);
     el.addEventListener('contextmenu', e => { if (this.cur || el.classList.contains('pen-near')) e.preventDefault(); }, true);
     el.addEventListener('click', e => {
-      if (performance.now() < this.swallowUntil) { e.preventDefault(); e.stopPropagation(); } // a stroke that ended on a box
+      if (performance.now() < this.swallowUntil) { e.preventDefault(); e.stopPropagation(); return; } // a stroke that ended on a box
+      if (this.tool === 'addline' && !this.readonly) { // a tap (pen or finger) says where the new line goes
+        e.preventDefault(); e.stopPropagation();
+        this.measure();
+        this.addLineAt(Math.floor(this.pagePoint(e)[1] / this.L));
+        this.setTool('pen'); renderToolbarOnly();
+      }
     }, true);
     this.L = parseFloat(getComputedStyle(el).getPropertyValue('--line')) || 56;
     const desk = $('.desk');
@@ -588,6 +594,7 @@ const Sheet = {
     this.hover.style.transform = `translate(${(e.clientX - r.left) / this.z}px, ${(e.clientY - r.top) / this.z}px)`;
   },
   down(e) {
+    if (this.tool === 'addline') return; // the tap is handled as a click, so a finger swipe still scrolls
     if (this.tool === 'select' && !this.readonly && this.selectDown(e)) return;
     if (e.pointerType !== 'pen') return;
     this.sawPen();
@@ -600,7 +607,7 @@ const Sheet = {
     this.measure();
     if ((this.canvas.getBoundingClientRect().top - this.rect.top) / this.z !== this.viewTop) this.redraw(); // page scrolled since the last frame
     this.cur = { pointerId: e.pointerId, t: e.timeStamp, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, ts0: e.timeStamp, moved: false };
-    if (this.erasing(e)) { this.cur.erased = []; this.showHover(e); this.erase(e); return; }
+    if (this.erasing(e)) { this.cur.erased = []; this.showHover(e); this.erase(e); this.erased(); return; }
     this.hover.hidden = true;
     const s = { id: uid(), c: S.ink, t0: Date.now(), pts: [] };
     if (this.tool === 'free' || this.free(e)) s.r = 'free'; // Free pen in the toolbar: plain ink
@@ -640,7 +647,7 @@ const Sheet = {
       this.addPoint(c.stroke, ev);
       this.piece(c.stroke, c.stroke.pts.length / 4 - 1);
     }
-    if (c.erased) this.showHover(e);
+    if (c.erased) { this.erased(); this.showHover(e); }
     else { const line = (c.y - this.rect.top) / this.z / this.L; if (line > this.rows - 3) this.grow(Math.floor(line)); }
   },
   up(e) {
@@ -767,25 +774,50 @@ const Sheet = {
     }, 700);
   },
 
-  // ---- eraser, undo, redo, clear ----
+  // ---- eraser, undo, redo ----
+  // The eraser follows the whole path between pen samples, so a quick swipe can't skip over a stroke.
+  // Strokes nowhere near the eraser are ruled out by their bounding box first, and the page is
+  // redrawn once per batch of pen samples rather than once per stroke rubbed out.
   erase(e) {
-    const r = this.rect, x = (e.clientX - r.left) / this.z, y = (e.clientY - r.top) / this.z, strokes = this.ink.strokes;
-    let hit = false;
-    for (let i = strokes.length - 1; i >= 0; i--) {
-      if (!this.hits(strokes[i], x, y, 12)) continue;
-      this.cur.erased.push({ stroke: strokes.splice(i, 1)[0], i });
-      hit = true;
+    const c = this.cur, [x, y] = this.pagePoint(e), r = ERASER_R;
+    const fx = c.ex == null ? x : c.ex, fy = c.ey == null ? y : c.ey;
+    c.ex = x; c.ey = y;
+    const steps = Math.max(1, Math.ceil(Math.hypot(x - fx, y - fy) / (r / 2)));
+    const minX = Math.min(x, fx) - r, maxX = Math.max(x, fx) + r, minY = Math.min(y, fy) - r, maxY = Math.max(y, fy) + r;
+    const st = this.ink.strokes, W = this.W, L = this.L;
+    for (let i = st.length - 1; i >= 0; i--) {
+      const s = st[i], b = this.span(s); // [top, bottom, _, left, right] in lines / page widths
+      if (b[4] * W < minX - 3 || b[3] * W > maxX + 3 || b[1] * L < minY - 3 || b[0] * L > maxY + 3) continue;
+      let hit = false;
+      for (let k = 0; k <= steps && !hit; k++) hit = this.hits(s, fx + (x - fx) * k / steps, fy + (y - fy) * k / steps, r);
+      if (!hit) continue;
+      c.erased.push({ stroke: st.splice(i, 1)[0], i });
+      c.repaint = true;
     }
-    if (hit) { this.redraw(); this.marks(); }
   },
+  erased() { const c = this.cur; if (c && c.repaint) { c.repaint = false; this.redraw(); this.marks(); } },
   hits(s, x, y, r) {
-    for (let i = 0; i < s.pts.length / 4; i++) {
-      const [bx, by, p] = this.px(s, i), [ax, ay] = i ? this.px(s, i - 1) : [bx, by];
-      const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
-      const t = len ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len)) : 0;
-      if (Math.hypot(ax + t * dx - x, ay + t * dy - y) < r + this.size(p) / 2) return true;
+    const p = s.pts, W = this.W, L = this.L, reach = (r + 3) * (r + 3); // 3 ≈ half the widest pen line
+    let ax = p[0] * W, ay = p[1] * L;
+    if ((ax - x) * (ax - x) + (ay - y) * (ay - y) < reach) return true;
+    for (let k = 4; k < p.length; k += 4) {
+      const bx = p[k] * W, by = p[k + 1] * L, dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+      let t = len ? ((x - ax) * dx + (y - ay) * dy) / len : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const ex = ax + t * dx - x, ey = ay + t * dy - y;
+      if (ex * ex + ey * ey < reach) return true;
+      ax = bx; ay = by;
     }
     return false;
+  },
+  // ---- Add line: tap a line and everything from there down moves down to make room ----
+  addLineAt(line) {
+    const below = this.ink.strokes.filter(s => s.l >= line);
+    if (!below.length) { toast('There’s no writing on or below this line, so there’s already room.'); return; }
+    this.sel = new Set(below.map(s => s.id));
+    this.moveSel(0, 2); // two ruled lines: one for the word, one for its pronunciation box
+    this.select(null);
+    toast('Added a line. Undo removes it.');
   },
   // ---- Select tool: draw around writing (or tap a line to take everything from there down), then drag it ----
   setTool(t) { this.tool = t; if (t !== 'select') this.select(null); },
@@ -921,22 +953,12 @@ const Sheet = {
       else for (const { stroke } of a.erased) this.remove(stroke);
       touched.push(...a.erased.map(x => x.stroke));
     }
-    if (a.lines) this.ink.lines = back ? a.lines : {};
     this.redraw();
-    if (a.lines) { this.marks(); this.save(); } else this.changed(touched, 300);
+    this.changed(touched, 300);
     this.renderSel();
   },
   undo() { if (this.cur) return; const a = this.done.pop(); if (!a) return; this.apply(a, true); this.undone.push(a); },
   redo() { if (this.cur) return; const a = this.undone.pop(); if (!a) return; this.apply(a, false); this.done.push(a); },
-  clear() {
-    const st = this.ink.strokes;
-    if (this.cur || !st.length) return;
-    if (!confirm('Erase all handwriting on this page? (Undo brings it back.)')) return;
-    const erased = st.map((stroke, i) => ({ stroke, i })).reverse(), lines = this.ink.lines;
-    st.length = 0; this.ink.lines = {}; this.dirty.clear(); this.busy = {};
-    this.record({ erased, lines });
-    this.redraw(); this.marks(); this.save();
-  },
 
   // ---- drawing: a smooth curve through the midpoints of the samples, width from pen pressure ----
   size(p) { return 1.4 + p * 3.4; },
@@ -985,12 +1007,14 @@ const Sheet = {
     c.filter = 'none';
   },
   spans: new WeakMap(),
-  span(s) { // top and bottom of a stroke in lines, remembered until the stroke changes
+  span(s) { // [top, bottom (lines), length, left, right (page widths)] of a stroke, remembered until it changes
     let v = this.spans.get(s);
     if (!v || v[2] !== s.pts.length) {
-      let a = Infinity, b = -Infinity;
-      for (let k = 1; k < s.pts.length; k += 4) { a = Math.min(a, s.pts[k]); b = Math.max(b, s.pts[k]); }
-      this.spans.set(s, v = [a, b, s.pts.length]);
+      let a = Infinity, b = -Infinity, l = Infinity, r = -Infinity;
+      for (let k = 0; k < s.pts.length; k += 4) {
+        l = Math.min(l, s.pts[k]); r = Math.max(r, s.pts[k]); a = Math.min(a, s.pts[k + 1]); b = Math.max(b, s.pts[k + 1]);
+      }
+      this.spans.set(s, v = [a, b, s.pts.length, l, r]);
     }
     return v;
   },
@@ -1231,6 +1255,7 @@ function renderToolbarOnly() {
       <button class="tool" aria-pressed="${S.inputMode === 'pen' && Sheet.tool === 'pen'}" data-act="mode-pen" aria-label="French pen: words are read and get a pronunciation">${I.pen}</button>
       <button class="tool labeled" aria-pressed="${Sheet.tool === 'free'}" data-act="freepen" aria-label="Free pen: plain ink, not read">${I.scribble}Free</button>
       <button class="tool labeled" aria-pressed="${Sheet.tool === 'select'}" data-act="select" aria-label="Select and move writing">${I.select}Select</button>
+      <button class="tool labeled" aria-pressed="${Sheet.tool === 'addline'}" data-act="addline" aria-label="Add a line: then tap where it should go">${I.addline}Add line</button>
       <button class="tool" aria-pressed="${Sheet.tool === 'eraser'}" data-act="eraser" aria-label="Eraser">${I.eraser}</button>
       <button class="tool" aria-pressed="${S.padOpen && S.inputMode === 'keys'}" data-act="mode-keys" aria-label="Type">${I.keyboard}</button>
       <span class="sep"></span>
@@ -1238,7 +1263,6 @@ function renderToolbarOnly() {
       <span class="sep"></span>
       <button class="tool" data-act="undo" aria-label="Undo">${I.undo}</button>
       <button class="tool" data-act="redo" aria-label="Redo">${I.redo}</button>
-      <button class="tool" data-act="clear" aria-label="Erase all handwriting on this page">${I.clear}</button>
       <span class="sep"></span>` : `<span class="readonly-note">Read only</span><span class="sep"></span>`}
     <button class="tool" aria-pressed="${S.covered}" data-act="cover" aria-label="Hide English to test yourself">${I.eye}</button>
     <button class="tool" data-act="playall" aria-label="${playing ? 'Stop' : 'Play every line'}">${playing ? I.stop : I.play}</button>
@@ -1354,6 +1378,10 @@ app.addEventListener('click', async ev => {
     case 'mode-pen': Sheet.setTool('pen'); toggleMode('pen'); break;
     case 'freepen': Sheet.setTool(Sheet.tool === 'free' ? 'pen' : 'free'); renderToolbarOnly(); break;
     case 'eraser': Sheet.setTool(Sheet.tool === 'eraser' ? 'pen' : 'eraser'); renderToolbarOnly(); break;
+    case 'addline':
+      Sheet.setTool(Sheet.tool === 'addline' ? 'pen' : 'addline'); renderToolbarOnly();
+      if (Sheet.tool === 'addline') toast('Tap the line where you want to add a new line.');
+      break;
     case 'select':
       Sheet.setTool(Sheet.tool === 'select' ? 'pen' : 'select'); renderToolbarOnly();
       if (Sheet.tool === 'select') toast('Draw around writing to select it, or tap a line to select everything below. Then drag the box.');
@@ -1364,7 +1392,6 @@ app.addEventListener('click', async ev => {
     case 'mode-keys': toggleMode('keys'); break;
     case 'undo': Sheet.undo(); break;
     case 'redo': Sheet.redo(); break;
-    case 'clear': Sheet.clear(); break;
     case 'addtyped': { const i = $('#typeFr'); if (i.value.trim()) { await addEntry(pageId, i.value); i.value = ''; i.focus(); } break; }
     case 'cover': S.covered = !S.covered; $('.paper').classList.toggle('covered', S.covered); Sheet.redraw(); renderToolbarOnly(); break;
     case 'playall': playPage(pid, pageId); break;

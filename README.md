@@ -50,9 +50,10 @@ English-style pronunciation (from Wiktionary) that you can tap to hear in a Fren
   draw a loop around some writing, or **tap a line to select everything from there down**, then drag the
   dashed box (with the pen or a finger). It moves up and down by whole lines, and pronunciation boxes move
   with their words. The bar above the box has **Everything below**, **Delete** and **Done**. Undo puts it back.
+- **Add line**: tap it, then tap the line where you missed something. Everything from that line down moves
+  down to make room for one word and its pronunciation box, and you're back on the pen. Undo removes it.
 - Only the S Pen writes; fingers scroll and tap. Pick the **eraser** to rub out strokes; the arrow and box
-  update by themselves. **Undo / Redo** step through your writing, and
-  **Clear** erases all handwriting on the page (Undo brings it back).
+  update by themselves. **Undo / Redo** step through your writing.
 - Tap **Type** to add a line with the keyboard instead (`que -> than` works there too). Typed lines sit at
   the top of the page, with an editable pronunciation box and a speaker.
 - **Zoom** the page by pinching with two fingers, or with **−** / **+** in the toolbar (tap the % to go back

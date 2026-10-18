@@ -111,6 +111,9 @@ Cloudflare's free plan never bills you; going over a limit would only pause savi
 - **Zoom** the page by pinching with two fingers, or with **−** / **+** in the toolbar (tap the % to go back
   to 100%). Only the notebook page zooms, not the rest of the app, and you can keep writing while zoomed in.
 - `0.6×` slows the voice, `FR`/`CA` switches France and Canadian French. **▶** reads the whole page aloud.
+- **Search a page** with the **magnifying glass** in the toolbar: choose **French** or **English**, then type. It finds
+  your handwritten words (as the app read them) and typed lines, ignores capitals and accents ("ete" finds "été"),
+  highlights every match in yellow and jumps to it. Use **‹ ›** (or Enter) to go through the matches.
 - **Eye button** blurs the English, typed or handwritten, so you can test yourself.
 - **⋮ on a typed line** lets you edit the French, fix the pronunciation, look it up again, or delete the line.
 - **Trash button on one of your home-page cards** deletes that page and all its lines after confirmation.

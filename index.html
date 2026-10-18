@@ -184,6 +184,18 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .ink-box.playing { box-shadow: 0 0 0 2px var(--c, var(--ink)); }
 /* highlighter over a French word that doesn't look right for its English */
 .ink-flag { position: absolute; border-radius: 6px; background: rgba(255, 70, 70, .3); mix-blend-mode: multiply; pointer-events: none; }
+/* search inside a page */
+.findbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--chrome); border-bottom: 1px solid var(--hair); flex: none; }
+.findbar[hidden] { display: none; }
+.findbar .seg { flex: none; }
+.findbar .seg button { height: 38px; padding: 0 14px; }
+.findbar input { flex: 1; min-width: 0; height: 42px; border-radius: 21px; border: 0; background: var(--chip); padding: 0 16px; font-size: 1rem; }
+.findbar .count { color: var(--muted); font-size: .85rem; white-space: nowrap; min-width: 4.5em; text-align: center; }
+.findbar .flip svg { transform: scaleX(-1); }
+.row.found { background: rgba(255, 213, 79, .32); border-radius: 8px; }
+.row.found.cur { background: rgba(255, 193, 7, .55); }
+.ink-found { position: absolute; border-radius: 8px; background: rgba(255, 213, 79, .38); mix-blend-mode: multiply; pointer-events: none; }
+.ink-found.cur { background: rgba(255, 179, 0, .55); box-shadow: 0 0 0 2px rgba(255, 160, 0, .75); }
 .sheet-hint {
   position: absolute; left: 0; top: 0; height: var(--line); display: flex; align-items: flex-end; padding-bottom: 10px;
   color: var(--muted); font-size: .95rem; pointer-events: none;
@@ -325,6 +337,7 @@ const I = {
   scribble: '<svg viewBox="0 0 24 24"><path d="M3 17c3-7 5-7 6-3s2 3 4-1 4-5 5-2 1 4 3 3"/></svg>',
   select: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/></svg>',
   addline: '<svg viewBox="0 0 24 24"><path d="M3 6h11M3 11h11M3 16h11M18 8v8M14 12h8"/></svg>',
+  search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
   eye: '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>',
   stop: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
@@ -603,14 +616,14 @@ const LOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" wid
 const Sheet = {
   el: null, canvas: null, ctx: null, hover: null, marksEl: null, rect: null, L: 56, rows: 0, observer: null, z: 1, W: 1,
   pid: null, pageId: null, readonly: true, tool: 'pen', cur: null, done: [], undone: [],
-  dirty: new Set(), enDirty: new Set(), busy: {}, token: {}, jtoken: {}, readTimer: null, saveTimer: null, nearTimer: null, swallowUntil: 0,
+  dirty: new Set(), enDirty: new Set(), enOnly: new Set(), busy: {}, token: {}, jtoken: {}, readTimer: null, saveTimer: null, nearTimer: null, swallowUntil: 0,
   get page() { return S.data[this.pid]?.pages[this.pageId]; },
   get ink() { const pg = this.page; return pg ? (pg.ink = pg.ink || { strokes: [], lines: {} }) : { strokes: [], lines: {} }; },
   // x is stored as a share of this width (px), fixed per page, so a wider or narrower page never stretches the writing
   get XW() { return this.ink.xw || this.W; },
   mount(el, pid, pageId, readonly) {
     if (pid !== this.pid || pageId !== this.pageId) {
-      this.done = []; this.undone = []; this.cur = null; this.dirty.clear(); this.enDirty.clear(); this.busy = {}; this.extra = 0; this.sel = null;
+      this.done = []; this.undone = []; this.cur = null; this.dirty.clear(); this.enDirty.clear(); this.enOnly.clear(); this.busy = {}; this.extra = 0; this.sel = null;
       clearTimeout(this.readTimer); this.readTimer = null;
     }
     this.el = el; this.pid = pid; this.pageId = pageId; this.readonly = readonly; this.rows = 0; this.cw = this.ch = 0;
@@ -666,7 +679,12 @@ const Sheet = {
       if (changed && !readonly) this.save();
     }
     this.grow(); this.fit();
-    if (this.dirty.size && !this.readTimer) this.schedule(0);
+    if (!readonly) { // lines written before the English was kept as text: read it once, so search can find it
+      for (const [l, res] of Object.entries(ink.lines)) {
+        if (res && res.fr && res.en == null && ink.strokes.some(s => s.r === 'en' && s.l === +l)) this.enOnly.add(+l);
+      }
+    }
+    if ((this.dirty.size || this.enOnly.size) && !this.readTimer) this.schedule(this.dirty.size ? 0 : 1500);
   },
   screen() { const desk = $('.desk'); return Math.ceil((desk ? desk.clientHeight : 800) / this.z / this.L); },
   // The page can be zoomed (CSS zoom on .paper): z is how much bigger it looks on screen and W is the
@@ -807,10 +825,10 @@ const Sheet = {
   },
 
   // ---- which line a stroke is on, and whether it's French or the English after the arrow ----
-  bounds(line) {
+  bounds(line, role = 'fr') { // left and right edge of the French (or English) writing on a line
     let minX = Infinity, maxX = -Infinity, c = null;
     for (const s of this.ink.strokes) {
-      if (s.r !== 'fr' || s.l !== line) continue;
+      if (s.r !== role || s.l !== line) continue;
       c = c || s.c;
       for (let k = 0; k < s.pts.length; k += 4) { minX = Math.min(minX, s.pts[k]); maxX = Math.max(maxX, s.pts[k]); }
     }
@@ -847,15 +865,17 @@ const Sheet = {
   },
   schedule(wait) {
     clearTimeout(this.readTimer); this.readTimer = null;
-    if (this.dirty.size || this.enDirty.size) this.readTimer = setTimeout(() => this.readDirty(), wait);
+    if (this.dirty.size || this.enDirty.size || this.enOnly.size) this.readTimer = setTimeout(() => this.readDirty(), wait);
   },
   readDirty() {
     this.readTimer = null;
     if (this.cur) return this.schedule(600);
     const fr = [...this.dirty], en = [...this.enDirty].filter(l => !this.dirty.has(l));
-    this.dirty.clear(); this.enDirty.clear();
+    const textOnly = [...this.enOnly].filter(l => !this.dirty.has(l) && !this.enDirty.has(l));
+    this.dirty.clear(); this.enDirty.clear(); this.enOnly.clear();
     for (const l of fr) this.read(l); // reading the French checks it against the English afterwards
     for (const l of en) this.judge(l);
+    for (const l of textOnly) this.judge(l, true);
   },
   inkOf(strokes, line) { // strokes as the handwriting reader wants them: [[xs], [ys], [times]] in px
     const W = this.XW, L = this.L, t0 = Math.min(...strokes.map(s => s.t0));
@@ -891,15 +911,18 @@ const Sheet = {
   },
   // Once the English after the arrow is written, read it (your ink stays as it is) and check the French
   // word against it. A doubtful word only gets a highlighter mark; nothing is ever corrected for you.
-  async judge(line) {
+  async judge(line, textOnly = false) { // textOnly: just read and keep the English text (for search)
     const res = this.ink.lines[line];
     if (!res || !res.fr || this.readonly) return;
     const ens = this.ink.strokes.filter(s => s.r === 'en' && s.l === line);
     const token = this.jtoken[line] = (this.jtoken[line] || 0) + 1;
-    if (!ens.length) { if (res.check) { delete res.check; this.marks(); this.save(); } return; }
+    if (!ens.length) { if (res.check || res.en) { delete res.check; delete res.en; this.marks(); this.save(); } return; }
     const { ink, width, height } = this.inkOf(ens, line);
     const list = await readHandwriting(ink, width, height, 'en');
     if (token !== this.jtoken[line] || !list || !list.length) return; // changed meanwhile, or couldn't read it
+    const read = this.ink.lines[line];
+    if (read && read.fr === res.fr && read.en !== list[0]) { read.en = list[0]; this.save(); } // the English as text, so it can be searched
+    if (textOnly) return;
     const fr = res.fr, check = await Judge.check(fr, list.slice(0, 3), res.guessed);
     const cur = this.ink.lines[line];
     if (token !== this.jtoken[line] || !cur || cur.fr !== fr) return;
@@ -969,6 +992,11 @@ const Sheet = {
       const label = busy ? '…' : res.failed ? '?' : (res.guessed ? '≈ ' : '') + (res.sound || res.fr);
       const title = busy ? 'Reading…' : res.failed ? 'Couldn’t read this word. Tap to try again.' : res.fr + (res.ipa ? `  /${res.ipa}/` : '');
       if (!busy && res.check) html += this.flags(l, res, b); // highlighter over what doesn't look right
+      const found = Find.state(l); // a search match on this line: mark the French or the English writing
+      if (found) {
+        const w = (Find.lang === 'en' && this.bounds(l, 'en')) || b;
+        html += `<div class="ink-found ${found}" style="left:${w.minX - 8}px;top:${l * L + 4}px;width:${w.maxX - w.minX + 16}px;height:${L - 4}px"></div>`;
+      }
       const fix = !busy && res.check ? this.fixText(res) : '';
       html += `<div class="ink-arrow" style="--c:${b.c};left:${b.maxX + ARROW_GAP}px;top:${l * L}px;height:${L}px">→</div>
         <div class="ink-under" style="left:${b.minX}px;top:${(l + 1) * L}px">
@@ -1638,6 +1666,63 @@ function renderHome() {
   s.addEventListener('input', () => { S.query = s.value; const pos = s.selectionStart; renderHome(); setStatus(); const n = $('.search'); n.focus(); n.setSelectionRange(pos, pos); });
 }
 
+// ---------- search inside a page: French or English, handwritten or typed ----------
+const Find = {
+  open: false, lang: 'fr', q: '', hits: [], i: 0, pageId: null,
+  // capitals, accents and curly apostrophes don't matter: "ete" finds "été"
+  norm: s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/’/g, "'").trim(),
+  mount() { // after the page is drawn: fill the bar and put the highlights back
+    if (S.route.pageId !== this.pageId) { this.pageId = S.route.pageId; this.open = false; this.q = ''; this.hits = []; }
+    const bar = $('.findbar'); if (!bar) return;
+    bar.hidden = !this.open;
+    bar.innerHTML = `<div class="seg"><button data-act="find-fr" aria-pressed="${this.lang === 'fr'}">French</button><button data-act="find-en" aria-pressed="${this.lang === 'en'}">English</button></div>
+      <input type="search" value="${esc(this.q)}" placeholder="${this.lang === 'fr' ? 'Search French words on this page' : 'Search English meanings on this page'}" aria-label="Search this page" autocomplete="off" spellcheck="false">
+      <span class="count" aria-live="polite"></span>
+      <button class="icon-btn" data-act="find-prev" aria-label="Previous match">${I.back}</button>
+      <button class="icon-btn flip" data-act="find-next" aria-label="Next match">${I.back}</button>
+      <button class="icon-btn" data-act="find-close" aria-label="Close search">✕</button>`;
+    const input = bar.querySelector('input');
+    input.addEventListener('input', () => { this.q = input.value; this.run(); });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); this.step(e.shiftKey ? -1 : 1); } if (e.key === 'Escape') this.close(); });
+    this.run(false);
+  },
+  toggle() { this.open ? this.close() : (this.open = true, this.mount(), $('.findbar input')?.focus()); renderToolbarOnly(); },
+  setLang(lang) { this.lang = lang; this.mount(); $('.findbar input')?.focus(); },
+  close() { this.open = false; this.q = ''; this.hits = []; this.mount(); this.show(false); renderToolbarOnly(); },
+  run(jump = true) { // typed lines first (they're at the top of the page), then handwriting from top to bottom
+    const { pid, pageId } = S.route, page = S.data[pid] && S.data[pid].pages[pageId], q = this.norm(this.q);
+    this.hits = [];
+    if (q && page) {
+      const key = this.lang === 'fr' ? 'fr' : 'en';
+      for (const e of entriesOf(pid, pageId)) if (this.norm(e[key]).includes(q)) this.hits.push({ row: e.id });
+      for (const l of inkLinesOf(page)) if (this.norm(l[key]).includes(q)) this.hits.push({ line: l.line });
+    }
+    if (this.i >= this.hits.length) this.i = 0;
+    if (jump) this.i = 0;
+    this.show(jump);
+  },
+  step(d) { const n = this.hits.length; if (!n) return; this.i = (this.i + d + n) % n; this.show(true); },
+  state(line) { // 'cur' / 'hit' / '' for a handwritten line, used when the page draws its marks
+    if (!this.open) return '';
+    const k = this.hits.findIndex(h => h.line === line);
+    return k < 0 ? '' : k === this.i ? 'cur' : 'hit';
+  },
+  show(jump) {
+    document.querySelectorAll('.row.found').forEach(r => r.classList.remove('found', 'cur'));
+    if (this.open) this.hits.forEach((h, k) => {
+      const r = h.row && document.querySelector(`.row[data-id="${h.row}"]`);
+      if (r) { r.classList.add('found'); if (k === this.i) r.classList.add('cur'); }
+    });
+    Sheet.marks();
+    const count = $('.findbar .count');
+    if (count) count.textContent = !this.q.trim() ? '' : this.hits.length ? `${this.i + 1} of ${this.hits.length}` : 'No matches';
+    if (!jump || !this.hits.length) return;
+    const h = this.hits[this.i];
+    const el = h.row ? document.querySelector(`.row[data-id="${h.row}"]`) : document.querySelector('.ink-found.cur');
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  },
+};
+
 // ---------- page ----------
 function renderPage() {
   const { pid, pageId } = S.route, mine = pid === S.me, p = prof(pid), page = S.data[pid].pages[pageId];
@@ -1651,6 +1736,7 @@ function renderPage() {
       <button class="icon-btn" data-act="pagemenu" aria-label="Page options">${I.more}</button>
     </header>
     <nav class="toolbar" aria-label="Tools"></nav>
+    <div class="findbar" role="search" ${Find.open ? '' : 'hidden'}></div>
     <main class="desk page-desk"><div class="paper ${S.covered ? 'covered' : ''}" style="--fs:${prefs.fs || 1}">
       <div class="paper-body"></div>
       <section class="ink-sheet" aria-label="Handwriting"></section>
@@ -1663,6 +1749,7 @@ function renderPage() {
   Zoom.mount($('.desk'));
   Sheet.mount($('.ink-sheet'), pid, pageId, !mine);
   if (mine) { renderDock(); Palette.mount($('.palette')); }
+  Find.mount();
 }
 
 // ---- floating pen palette: the tools you use while writing, next to your hand instead of up top ----
@@ -1746,6 +1833,7 @@ function renderToolbarOnly() {
       <button class="tool" data-act="undo" aria-label="Undo">${I.undo}</button>
       <button class="tool" data-act="redo" aria-label="Redo">${I.redo}</button>
       <span class="sep"></span>` : `<span class="readonly-note">Read only</span><span class="sep"></span>`}
+    <button class="tool" aria-pressed="${Find.open}" data-act="find" aria-label="Search this page" title="Search this page">${I.search}</button>
     <button class="tool" aria-pressed="${S.covered}" data-act="cover" aria-label="Hide English to test yourself">${I.eye}</button>
     <button class="tool" data-act="playall" aria-label="${playing ? 'Stop' : 'Play every line'}">${playing ? I.stop : I.play}</button>
     <button class="tool" aria-pressed="${prefs.slow}" data-act="slow" aria-label="Slow speech">0.6×</button>
@@ -1798,6 +1886,7 @@ function renderPageBody() {
     ${es.map(e => rowHTML(e, mine)).join('')}
   `;
   S.justAdded = null;
+  if (Find.open) Find.show(false); // keep search highlights on redrawn lines
 }
 
 function updateRow(e) {
@@ -1895,6 +1984,12 @@ app.addEventListener('click', async ev => {
     case 'undo': Sheet.undo(); break;
     case 'redo': Sheet.redo(); break;
     case 'addtyped': { const i = $('#typeFr'); if (i.value.trim()) { await addEntry(pageId, i.value); i.value = ''; i.focus(); } break; }
+    case "find": Find.toggle(); break;
+    case "find-fr": Find.setLang("fr"); break;
+    case "find-en": Find.setLang("en"); break;
+    case "find-prev": Find.step(-1); break;
+    case "find-next": Find.step(1); break;
+    case "find-close": Find.close(); break;
     case 'cover': S.covered = !S.covered; $('.paper').classList.toggle('covered', S.covered); Sheet.redraw(); renderToolbarOnly(); break;
     case 'playall': playPage(pid, pageId); break;
     case 'slow': prefs.slow = !prefs.slow; savePrefs(); renderToolbarOnly(); break;

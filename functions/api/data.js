@@ -9,6 +9,7 @@
 const PEOPLE = ['p1', 'p2'];
 const FIELD = /^(page|entry):[\w-]+$/;
 let ready = false; // tables exist and the one-time copy is done (per Worker instance)
+let copyError = null; // why the last copy from Upstash failed, shown by ?action=status
 
 const json = (status, body) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
@@ -22,10 +23,29 @@ async function setup(db, env) {
   ]);
   try {
     await copyFromUpstash(db, env);
-    ready = true;
+    ready = true; copyError = null;
   } catch (e) {
+    copyError = e.message;
     console.error('Copy from Upstash failed, will try again on the next request:', e.message);
   }
+}
+
+// /api/data?action=status: what this site can see, without any secrets or notes.
+// /api/data?action=recopy&passcode=…: copy from Upstash again (never overwrites what's saved here).
+async function status(db, env) {
+  await setup(db, env);
+  const count = async p => (await db.prepare('SELECT COUNT(*) AS n FROM items WHERE person = ?').bind(p).first()).n;
+  const copied = await db.prepare("SELECT value FROM meta WHERE key = 'copied'").first();
+  return {
+    storage: 'connected',
+    passcodeSet: !!env.APP_PASSCODE,
+    upstashUrlSet: !!(env.UPSTASH_REDIS_REST_URL || env.KV_REST_API_URL),
+    upstashTokenSet: !!(env.UPSTASH_REDIS_REST_TOKEN || env.KV_REST_API_READ_ONLY_TOKEN || env.KV_REST_API_TOKEN),
+    copied: copied ? copied.value : 'not yet',
+    copyError,
+    notesHere: { p1: await count('p1'), p2: await count('p2') },
+    profilesHere: !!(await db.prepare("SELECT 1 FROM meta WHERE key = 'profiles'").first()),
+  };
 }
 
 async function copyFromUpstash(db, env) {
@@ -68,7 +88,18 @@ export async function onRequest({ request, env }) {
 
   // ping tells the app whether storage is set up and a passcode is needed
   if (action === 'ping') return json(200, { ok: !!db, auth: !!passcode });
-  if (!db) return json(503, { error: 'Storage is not connected. Bind a D1 database named DB in Cloudflare Pages.' });
+  if (!db) return json(action === 'status' ? 200 : 503, { error: 'Storage is not connected. Bind a D1 database named DB in Cloudflare Pages, then retry the deployment.' });
+  try {
+    if (action === 'status') return json(200, await status(db, env));
+    if (action === 'recopy') {
+      if (passcode && url.searchParams.get('passcode') !== passcode) return json(401, { error: 'Add &passcode=… with your passcode' });
+      await db.prepare("DELETE FROM meta WHERE key = 'copied'").run().catch(() => { });
+      ready = false;
+      return json(200, await status(db, env));
+    }
+  } catch (e) {
+    return json(500, { error: e.message });
+  }
   if (passcode && request.headers.get('x-passcode') !== passcode) return json(401, { error: 'Wrong passcode' });
 
   try {

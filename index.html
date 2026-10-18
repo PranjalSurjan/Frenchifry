@@ -575,7 +575,7 @@ const PenSound = {
     if (this.kind === 'off' || !this.voice) return;
     const now = at ?? this.ctx.currentTime, g = this.gain.gain, chalk = this.kind === 'chalk';
     const speed = dist / ms; // about 0.2 px/ms when writing slowly, 2 when quick
-    const level = Math.min(1, Math.pow(speed / 1.4, 0.7)) * (0.55 + 0.45 * Math.min(1, pressure * 1.6)) * (chalk ? 0.09 : 0.085); // kept low on purpose: a faint background sound, never attention-grabbing
+    const level = Math.min(1, Math.pow(speed / 1.4, 0.7)) * (0.55 + 0.45 * Math.min(1, pressure * 1.6)) * (chalk ? 0.045 : 0.042); // kept low on purpose: a faint background sound, never attention-grabbing
     g.cancelAndHoldAtTime ? g.cancelAndHoldAtTime(now) : g.cancelScheduledValues(now);
     g.setTargetAtTime(level, now, 0.02);
     g.setTargetAtTime(0, now + 0.07, 0.05); // fades out by itself if the pen stops moving

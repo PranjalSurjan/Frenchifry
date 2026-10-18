@@ -1912,9 +1912,12 @@ function openSettings(first) {
     <div class="field"><span class="lbl">Voice</span>
       <div class="seg"><button data-accent="fr-FR" aria-pressed="${draft.accent === 'fr-FR'}">France</button><button data-accent="fr-CA" aria-pressed="${draft.accent === 'fr-CA'}">Canada</button></div></div>
     ${Store.auth ? `<div class="field"><label for="pass">Passcode</label><input class="text" id="pass" type="password" value="${esc(draft.pass)}" autocomplete="current-password"></div>` : ''}
+    ${first ? '' : `<div class="field"><span class="lbl">Backup</span>
+      <div class="seg"><button data-export>Export backup</button><button data-import>Import backup</button></div>
+      <p style="margin:8px 0 0;font-size:.85rem">Export saves every page of both of you to one file. Import adds back anything missing from a backup file; it never overwrites or deletes what you have.</p></div>`}
     <div class="field note">${Store.mode === 'remote'
-      ? 'Your notes sync through your Vercel storage, so both tablets see the same pages.'
-      : 'Notes are saved on this device only. To sync two tablets, connect Upstash Redis to this project in Vercel (see the README).'}
+      ? 'Your notes sync online, so both tablets see the same pages.'
+      : 'Notes are saved on this device only. To sync two tablets, connect online storage (see the README).'}
       Pronunciations come from French Wiktionary (a small ≈ means the word wasn’t found and it was guessed from the spelling).</div>
     <div class="actions">${first ? '' : '<button class="btn" data-close>Cancel</button>'}<button class="btn primary" style="flex:none" data-save>Save</button></div>`;
   modal(html(), (s, close) => {
@@ -1927,6 +1930,8 @@ function openSettings(first) {
       if (b.dataset.order) { draft.order = b.dataset.order; rerender(); }
       if (b.dataset.accent) { draft.accent = b.dataset.accent; rerender(); }
       if (b.hasAttribute('data-close')) close();
+      if (b.hasAttribute('data-export')) exportBackup();
+      if (b.hasAttribute('data-import')) chooseBackup();
       if (b.hasAttribute('data-save')) {
         draft.profiles.forEach(p => p.name = p.name.trim() || (p.id === 'p1' ? 'Person 1' : 'Person 2'));
         const changedProfiles = JSON.stringify(draft.profiles) !== JSON.stringify(S.profiles);
@@ -1963,6 +1968,51 @@ function askPasscode() {
 // ======================================================================
 // Sync
 // ======================================================================
+// ---------- backup: one file with every page of both of you ----------
+function backupData() {
+  return { app: 'french-notes', version: 1, exported: new Date().toISOString(), profiles: S.profiles, people: { p1: S.data.p1, p2: S.data.p2 } };
+}
+async function exportBackup() {
+  if (Store.mode === 'remote') await loadAll(); // the very latest from both tablets
+  const blob = new Blob([JSON.stringify(backupData())], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `french-notes-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  toast('Backup saved to your Downloads.');
+}
+function chooseBackup() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.json,application/json';
+  input.onchange = async () => {
+    const file = input.files[0]; if (!file) return;
+    let data;
+    try { data = JSON.parse(await file.text()); } catch (e) { toast('That file isn’t a French notes backup.'); return; }
+    await importBackup(data);
+  };
+  input.click();
+}
+async function importBackup(data) { // adds what's missing; never overwrites or deletes anything you have now
+  if (!data || data.app !== 'french-notes' || !data.people) { toast('That file isn’t a French notes backup.'); return 0; }
+  if (Store.mode === 'remote') await loadAll();
+  const add = [];
+  for (const pid of ['p1', 'p2']) {
+    const theirs = data.people[pid] || {}, mine = S.data[pid];
+    for (const kind of ['page', 'entry']) {
+      const from = theirs[kind === 'page' ? 'pages' : 'entries'] || {}, to = mine[kind === 'page' ? 'pages' : 'entries'];
+      for (const [id, item] of Object.entries(from)) if (item && item.id === id && !to[id]) add.push({ pid, kind, item, to });
+    }
+  }
+  if (!add.length) { toast('Everything in this backup is already here.'); return 0; }
+  const pages = add.filter(a => a.kind === 'page').length, lines = add.length - pages;
+  if (!confirm(`Add ${pages} ${pages === 1 ? 'page' : 'pages'} and ${lines} typed ${lines === 1 ? 'line' : 'lines'} from this backup?`)) return 0;
+  for (const a of add) { a.to[a.item.id] = a.item; await Store.put(a.pid, a.kind, a.item); }
+  render();
+  toast(`Restored ${pages} ${pages === 1 ? 'page' : 'pages'} and ${lines} typed ${lines === 1 ? 'line' : 'lines'}.`);
+  return add.length;
+}
+
 async function loadAll() {
   try {
     S.profiles = await Store.loadProfiles();

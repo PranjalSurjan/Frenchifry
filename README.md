@@ -63,7 +63,9 @@ Cloudflare's free plan never bills you; going over a limit would only pause savi
 ## How to use it
 
 - **Floating pen palette**: the tools you use while writing (French pen, Free, Select, Add line, eraser, ink
-  colour, undo, redo) also sit in a small dark bar at the bottom right, so you don't have to reach for the top.
+  colour, search, undo, redo) also sit in a small dark bar at the bottom right, so you don't have to reach for the top.
+  Its colour button opens a grid of 13 inks plus a rainbow button for **any colour**; colours you pick that way are
+  remembered in the grid.
   Drag it anywhere by its ⋮⋮ handle; it stays where you put it. Tap ⌄ to tuck it into one round button, and
   tap that button to bring it back (drag the button to move it too).
 - **Write a French word on any line** of the page with the S Pen. Your handwriting stays as you wrote it.

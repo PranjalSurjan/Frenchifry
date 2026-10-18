@@ -45,7 +45,24 @@ async function status(db, env) {
     copyError,
     notesHere: { p1: await count('p1'), p2: await count('p2') },
     profilesHere: !!(await db.prepare("SELECT 1 FROM meta WHERE key = 'profiles'").first()),
+    sizeKB: { p1: await size('p1'), p2: await size('p2') },
+    biggestItemsKB: (await db.prepare('SELECT person, field, LENGTH(value) AS n FROM items ORDER BY n DESC LIMIT 5').all())
+      .results.map(r => `${r.person} ${r.field.split(':')[0]}: ${Math.round(r.n / 1024)}`),
+    loadTest: await loadTest(db), // the same work as loading notes, timed, without returning them
   };
+  async function size(p) { return Math.round(((await db.prepare('SELECT SUM(LENGTH(value)) AS n FROM items WHERE person = ?').bind(p).first()).n || 0) / 1024); }
+}
+async function loadTest(db) {
+  const out = {};
+  for (const p of PEOPLE) {
+    const t = Date.now();
+    try {
+      const { results } = await db.prepare('SELECT field, value FROM items WHERE person = ?').bind(p).all();
+      const items = {}; for (const row of results) items[row.field] = row.value;
+      out[p] = `ok, ${Math.round(JSON.stringify({ items }).length / 1024)} KB in ${Date.now() - t} ms`;
+    } catch (e) { out[p] = 'FAILED: ' + e.message; }
+  }
+  return out;
 }
 
 async function copyFromUpstash(db, env) {

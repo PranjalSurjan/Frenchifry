@@ -528,81 +528,58 @@ const wordsOf = (pid, page) => !page ? [] : [
 // lines: { [line]: { fr, sound, ipa, guessed } } }. x is a share of the page width, y is measured in ruled lines.
 // ======================================================================
 // ======================================================================
-// Pen sound: a low, warm glide, like a soft pencil on thick paper (or a felt marker), plus a soft "tock"
-// each time the nib lands. Made live from deep "brown" noise, no sound files. It follows the pen: silent
-// when it's still, a little fuller as you write faster or press harder, and it fades the moment you stop.
-// Everything sharp is filtered away; the sound sits around 200–600 Hz, which tablet speakers can still play.
+// Pen sound: a faint chalk-on-blackboard or marker-on-whiteboard sound while you write, kept quiet on purpose. Made live from filtered
+// noise, no sound files. It follows the pen: silent when it's still, louder and a little brighter as you
+// write faster or press harder, and it fades the moment you stop. Squeaky high frequencies are cut off.
 // ======================================================================
-const PEN_SOUNDS = {
-  //          texture        high-pass  band centre (+ how far it rises with speed)  low-pass  loudness
-  pencil: { grain: true, hp: 130, band: 380, rise: 200, q: 0.6, lp: 1000, level: 1.25, tap: 0.55 },
-  marker: { grain: false, hp: 90, band: 280, rise: 120, q: 0.55, lp: 750, level: 1.35, tap: 0.4 },
-};
 const PenSound = {
-  // older choices map onto the new sounds: the bright chalk becomes the soft pencil
-  kind: ({ chalk: 'pencil' })[LS.get('penSound', 'pencil')] || LS.get('penSound', 'pencil'), // 'pencil' | 'marker' | 'off'
-  ctx: null, gain: null, voice: null, buffers: null, tapBuf: null,
+  kind: ({ pencil: 'chalk' })[LS.get('penSound', 'chalk')] || LS.get('penSound', 'chalk'), // 'chalk' | 'marker' | 'off'
+  ctx: null, gain: null, voice: null, buffers: null,
   setup() {
     if (this.ctx) return true;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return false;
     const ctx = this.ctx = new AC();
-    this.buffers = { pencil: this.noise(ctx, true), marker: this.noise(ctx, false) };
-    this.tapBuf = this.tock(ctx);
+    this.buffers = { chalk: this.noise(ctx, true), marker: this.noise(ctx, false) };
     this.gain = ctx.createGain(); this.gain.gain.value = 0;
     this.gain.connect(ctx.destination);
     return true;
   },
-  noise(ctx, grain) { // 2 s of looping deep noise; the pencil's gets a soft, uneven paper grain
+  noise(ctx, gritty) { // 2 s of looping noise: chalk gets tiny bursts of grit, marker is a smooth hiss
     const n = ctx.sampleRate * 2, buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
-    let brown = 0, bump = 0;
+    let grit = 0, soft = 0;
     for (let i = 0; i < n; i++) {
-      brown = (brown + 0.02 * (Math.random() * 2 - 1)) / 1.02; // "brown" noise: mostly low frequencies
-      if (grain) { if (Math.random() < 0.0015) bump = 0.4 + Math.random() * 0.5; bump *= 0.997; }
-      d[i] = brown * 3.5 * (grain ? 0.75 + bump : 1);
-    }
-    return buf;
-  },
-  tock(ctx) { // a 70 ms soft knock: a low thump with a breath of texture, like a nib touching down
-    const n = Math.round(ctx.sampleRate * 0.07), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
-    let brown = 0;
-    for (let i = 0; i < n; i++) {
-      const t = i / ctx.sampleRate;
-      brown = (brown + 0.02 * (Math.random() * 2 - 1)) / 1.02;
-      d[i] = Math.sin(2 * Math.PI * (150 - 400 * t) * t) * Math.exp(-t / 0.018) * 0.6 + brown * 3 * Math.exp(-t / 0.008);
+      const w = Math.random() * 2 - 1;
+      if (gritty) {
+        if (Math.random() < 0.0035) grit = 0.15 + Math.random() * 0.25;
+        grit *= 0.9985;
+        d[i] = w * (0.35 + grit);
+      } else { soft += (w - soft) * 0.35; d[i] = soft * 1.8; }
     }
     return buf;
   },
   voiceUp() { // the noise, shaped by filters for the chosen sound
     if (this.voice && this.voice.kind === this.kind) return;
     if (this.voice) try { this.voice.src.stop(); } catch (e) { }
-    const ctx = this.ctx, s = PEN_SOUNDS[this.kind], src = ctx.createBufferSource();
+    const ctx = this.ctx, chalk = this.kind === 'chalk', src = ctx.createBufferSource();
     src.buffer = this.buffers[this.kind]; src.loop = true;
     const filter = (type, f, q) => { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q) b.Q.value = q; return b; };
-    const hp = filter('highpass', s.hp), band = filter('bandpass', s.band, s.q), lp = filter('lowpass', s.lp);
+    const hp = filter('highpass', chalk ? 900 : 250), band = filter('bandpass', chalk ? 2000 : 900, 0.8), lp = filter('lowpass', chalk ? 4300 : 3000);
     src.connect(hp).connect(band).connect(lp).connect(this.gain);
     src.start();
     this.voice = { kind: this.kind, src, band };
   },
   unlock() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => { }); },
-  start(pressure = 0.5, at) { // the pen lands: start the glide and play the little tock
-    if (this.kind === 'off' || !this.setup()) return;
-    this.unlock(); this.voiceUp();
-    const ctx = this.ctx, src = ctx.createBufferSource(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
-    src.buffer = this.tapBuf; lp.type = 'lowpass'; lp.frequency.value = 900;
-    g.gain.value = PEN_SOUNDS[this.kind].tap * (0.6 + 0.4 * Math.min(1, pressure * 1.6));
-    src.connect(lp).connect(g).connect(ctx.destination);
-    src.start(at ?? 0);
-  },
+  start() { if (this.kind === 'off' || !this.setup()) return; this.unlock(); this.voiceUp(); },
   move(dist, ms, pressure, at) { // the pen moved dist page px in ms milliseconds
     if (this.kind === 'off' || !this.voice) return;
-    const now = at ?? this.ctx.currentTime, g = this.gain.gain, s = PEN_SOUNDS[this.kind];
+    const now = at ?? this.ctx.currentTime, g = this.gain.gain, chalk = this.kind === 'chalk';
     const speed = dist / ms; // about 0.2 px/ms when writing slowly, 2 when quick
-    const level = Math.min(1, Math.pow(speed / 1.4, 0.7)) * (0.55 + 0.45 * Math.min(1, pressure * 1.6)) * s.level;
+    const level = Math.min(1, Math.pow(speed / 1.4, 0.7)) * (0.55 + 0.45 * Math.min(1, pressure * 1.6)) * (chalk ? 0.17 : 0.16); // kept low on purpose: a faint background sound, never attention-grabbing
     g.cancelAndHoldAtTime ? g.cancelAndHoldAtTime(now) : g.cancelScheduledValues(now);
-    g.setTargetAtTime(level, now, 0.025);
-    g.setTargetAtTime(0, now + 0.07, 0.06); // fades out by itself if the pen stops moving
-    this.voice.band.frequency.setTargetAtTime(s.band + Math.min(speed, 2) / 2 * s.rise, now, 0.06);
+    g.setTargetAtTime(level, now, 0.02);
+    g.setTargetAtTime(0, now + 0.07, 0.05); // fades out by itself if the pen stops moving
+    this.voice.band.frequency.setTargetAtTime((chalk ? 1800 : 800) + Math.min(speed, 2) * (chalk ? 500 : 300), now, 0.05);
   },
   stop(at) {
     if (!this.ctx) return;
@@ -613,9 +590,9 @@ const PenSound = {
   set(kind) { // from the ♪ menu; plays a short scribble so you can hear it
     this.kind = kind; LS.set('penSound', kind);
     if (kind === 'off') { this.stop(); return; }
-    this.start(0.6);
+    this.start();
     let i = 0;
-    const tick = () => { if (i++ < 30) { this.move(5 + 6 * Math.abs(Math.sin(i * 0.35)), 16, 0.6); setTimeout(tick, 16); } else this.stop(); };
+    const tick = () => { if (i++ < 16) { this.move(5 + 5 * Math.abs(Math.sin(i * 0.7)), 16, 0.6); setTimeout(tick, 16); } else this.stop(); };
     tick();
   },
 };
@@ -766,7 +743,7 @@ const Sheet = {
     if (this.erasing(e)) { this.cur.erased = []; this.showHover(e); this.erase(e); this.erased(); return; }
     this.hover.hidden = true;
     const s = { id: uid(), c: S.ink, t0: Date.now(), pts: [] };
-    PenSound.start(e.pressure || 0.5);
+    PenSound.start();
     if (this.tool === 'free' || this.free(e)) s.r = 'free'; // Free pen in the toolbar: plain ink
     this.cur.stroke = s;
     this.addPoint(s, e);
@@ -1888,7 +1865,7 @@ app.addEventListener('click', async ev => {
     case 'freepen': Sheet.setTool(Sheet.tool === 'free' ? 'pen' : 'free'); renderToolbarOnly(); break;
     case 'eraser': Sheet.setTool(Sheet.tool === 'eraser' ? 'pen' : 'eraser'); renderToolbarOnly(); break;
     case 'pensound': {
-      const kinds = [['Soft pencil', 'pencil'], ['Felt marker', 'marker'], ['Off', 'off']];
+      const kinds = [['Chalk (blackboard)', 'chalk'], ['Marker (whiteboard)', 'marker'], ['Off', 'off']];
       popover(t, kinds.map(([label, k]) => ({ label: (k === PenSound.kind ? '✓ ' : '    ') + label, run: () => PenSound.set(k) })));
       break;
     }

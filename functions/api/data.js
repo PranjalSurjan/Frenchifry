@@ -96,10 +96,24 @@ async function copyFromUpstash(db, env) {
   for (let i = 0; i < writes.length; i += 50) await db.batch(writes.slice(i, i + 50));
 }
 
+// Every save bumps this counter, so the app can ask "anything new?" cheaply instead of downloading everything.
+const isObj = s => typeof s === "string" && s.startsWith("{") && s.endsWith("}"); // cheap check that a stored value is a JSON object
+const bumpRev = db => db.prepare("INSERT INTO meta (key, value) VALUES ('rev', '1') ON CONFLICT (key) DO UPDATE SET value = CAST(value AS INTEGER) + 1");
+async function write(db, statements) { // run the change, bump the counter, and return the new counter
+  const res = await db.batch([...statements, bumpRev(db), db.prepare("SELECT value FROM meta WHERE key = 'rev'")]);
+  const row = res[res.length - 1].results[0];
+  return row ? String(row.value) : undefined;
+}
+
 export async function onRequest({ request, env }) {
   const url = new URL(request.url);
-  let body = {};
-  if (request.method === 'POST') { try { body = await request.json(); } catch (e) { } }
+  // A page with lots of handwriting can be megabytes. The app sends it as the raw body
+  // (?action=put&person=…&field=…) and it's stored exactly as received: no parsing, which on the
+  // free plan's tiny time allowance is what made big saves fail.
+  const rawPut = request.method === 'POST' && url.searchParams.get('action') === 'put' && url.searchParams.has('field');
+  let body = {}, raw = '';
+  if (rawPut) raw = await request.text();
+  else if (request.method === 'POST') { try { body = await request.json(); } catch (e) { } }
   const action = url.searchParams.get('action') || body.action;
   const db = env.DB, passcode = env.APP_PASSCODE || '';
 
@@ -125,31 +139,41 @@ export async function onRequest({ request, env }) {
       const person = url.searchParams.get('person');
       if (!PEOPLE.includes(person)) return json(400, { error: 'Unknown person' });
       const { results } = await db.prepare('SELECT field, value FROM items WHERE person = ?').bind(person).all();
-      const items = {};
-      for (const row of results) items[row.field] = row.value;
-      return json(200, { items });
+      // Stitch the stored JSON straight into the reply instead of re-encoding megabytes of it.
+      const parts = results.map(r => JSON.stringify(r.field) + ':' + (isObj(r.value) ? r.value : JSON.stringify(r.value)));
+      return new Response('{"items":{' + parts.join(',') + '}}', {
+        status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      });
+    }
+    if (request.method === 'GET' && action === 'version') {
+      const row = await db.prepare("SELECT value FROM meta WHERE key = 'rev'").first();
+      return json(200, { rev: row ? String(row.value) : '0' });
     }
     if (request.method === 'GET' && action === 'profiles') {
       const row = await db.prepare("SELECT value FROM meta WHERE key = 'profiles'").first();
       return json(200, { profiles: row ? JSON.parse(row.value) : null });
     }
     if (request.method === 'POST') {
-      const { person, field, value, fields, profiles } = body;
+      const { fields, profiles } = body;
+      const person = rawPut ? url.searchParams.get('person') : body.person;
+      const field = rawPut ? url.searchParams.get('field') : body.field;
       if (action === 'profiles') {
-        await db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('profiles', ?)").bind(JSON.stringify(profiles)).run();
-        return json(200, { ok: true });
+        return json(200, { ok: true, rev: await write(db, [db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('profiles', ?)").bind(JSON.stringify(profiles))]) });
       }
       if (!PEOPLE.includes(person)) return json(400, { error: 'Unknown person' });
       if (action === 'put') {
         if (!FIELD.test(field || '')) return json(400, { error: 'Bad field' });
-        await db.prepare('INSERT INTO items (person, field, value) VALUES (?, ?, ?) ON CONFLICT (person, field) DO UPDATE SET value = excluded.value')
-          .bind(person, field, JSON.stringify(value)).run();
-        return json(200, { ok: true });
+        const value = rawPut ? raw.trim() : JSON.stringify(body.value);
+        if (!isObj(value)) return json(400, { error: 'Bad value' });
+        const rev = await write(db, [
+          db.prepare('INSERT INTO items (person, field, value) VALUES (?, ?, ?) ON CONFLICT (person, field) DO UPDATE SET value = excluded.value').bind(person, field, value),
+        ]);
+        return json(200, { ok: true, rev });
       }
       if (action === 'del') {
         const list = (fields || []).filter(f => FIELD.test(f));
-        if (list.length) await db.batch(list.map(f => db.prepare('DELETE FROM items WHERE person = ? AND field = ?').bind(person, f)));
-        return json(200, { ok: true });
+        const rev = list.length ? await write(db, list.map(f => db.prepare('DELETE FROM items WHERE person = ? AND field = ?').bind(person, f))) : undefined;
+        return json(200, { ok: true, rev });
       }
     }
     return json(400, { error: 'Unknown action' });

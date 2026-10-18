@@ -376,7 +376,7 @@ const Store = {
     const r = await fetch('/api/data?' + new URLSearchParams(query), {
       method, cache: 'no-store',
       headers: { 'Content-Type': 'application/json', 'x-passcode': this.passcode },
-      body: body ? JSON.stringify(body) : undefined,
+      body: body == null ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
     });
     if (r.status === 401) { const e = new Error('passcode'); e.code = 401; throw e; }
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Request failed');
@@ -396,7 +396,7 @@ const Store = {
     const out = { pages: {}, entries: {} };
     for (const [f, v] of Object.entries(items)) {
       try {
-        const o = JSON.parse(v);
+        const o = typeof v === 'string' ? JSON.parse(v) : v; // the server now sends them already unpacked
         if (f.startsWith('page:')) out.pages[o.id] = o; else if (f.startsWith('entry:')) out.entries[o.id] = o;
       } catch (e) { }
     }
@@ -405,24 +405,33 @@ const Store = {
   async put(pid, kind, item) {
     const field = kind + ':' + item.id;
     if (this.mode === 'local') { const d = this.local(); d[pid] = d[pid] || {}; d[pid][field] = JSON.stringify(item); LS.set('local', d); return; }
-    await this.write(() => this.call('POST', { action: 'put' }, { action: 'put', person: pid, field, value: item }));
+    // sent as the raw body so the server can store it without unpacking it (big handwriting pages)
+    await this.write(() => this.call('POST', { action: 'put', person: pid, field }, JSON.stringify(item)), pid + '|' + field);
   },
   async del(pid, fields) {
     if (this.mode === 'local') { const d = this.local(); fields.forEach(f => delete (d[pid] || {})[f]); LS.set('local', d); return; }
     await this.write(() => this.call('POST', { action: 'del' }, { action: 'del', person: pid, fields }));
   },
-  async write(fn) {
+  rev: null, // the server's change counter as of our last full download
+  async version() { // cheap "has anything changed?" check; null if the server can't tell
+    try { const j = await this.call('GET', { action: 'version' }); return j.rev != null ? String(j.rev) : null; } catch (e) { if (e.code === 401) throw e; return null; }
+  },
+  async write(fn, key) {
     this.pending++; setStatus();
-    try { await fn(); }
-    catch (e) {
+    try {
+      const j = await fn();
+      // our own save moved the counter by exactly one: nothing new from anyone else, so no need to download
+      if (j && j.rev != null && this.rev != null && +j.rev === +this.rev + 1) this.rev = String(j.rev);
+    } catch (e) {
       if (e.code === 401) askPasscode();
-      this.failed.push(fn);
-      toast('Couldn’t save. It will retry when you’re back online.');
+      if (key) this.failed = this.failed.filter(f => f.key !== key); // only the latest save of a page needs retrying
+      fn.key = key; this.failed.push(fn);
+      if (!this.warned) { this.warned = true; toast('Couldn’t save. It will retry when you’re back online.'); setTimeout(() => { this.warned = false; }, 60000); }
     } finally { this.pending--; setStatus(); }
   },
   async retry() {
     const list = this.failed.splice(0);
-    for (const fn of list) await this.write(fn);
+    for (const fn of list) await this.write(fn, fn.key);
   },
 };
 
@@ -578,6 +587,12 @@ const Sheet = {
       ink.xw = ink.strokes.length && desk ? Math.round(Math.min(1180, desk.clientWidth - 32) - pads) : Math.round(this.W);
       if (ink.strokes.length && !readonly) this.save();
     }
+    if (!ink.slim) { // once per page: slim down handwriting saved before strokes were slimmed as you write
+      let changed = false;
+      for (const s of ink.strokes) if (this.slim(s)) changed = true;
+      ink.slim = 1;
+      if (changed && !readonly) this.save();
+    }
     this.grow(); this.fit();
     if (this.dirty.size && !this.readTimer) this.schedule(0);
   },
@@ -707,6 +722,7 @@ const Sheet = {
     if (c.erased) { if (c.erased.length) { this.record({ erased: c.erased }); this.changed(c.erased.map(x => x.stroke), 500); } return; }
     const s = c.stroke;
     this.tail(s);
+    this.slim(s);
     this.classify(s);
     this.record({ added: s });
     this.changed([s], 1100); // read the line once you pause
@@ -1131,6 +1147,31 @@ const Sheet = {
       if (moving) c.restore();
     }
     c.filter = 'none';
+  },
+  // Drop pen samples that make no visible difference: any point within a third of a pixel of the line
+  // through its neighbours (Ramer–Douglas–Peucker). The ink looks the same but takes far less space,
+  // so a page full of writing stays small and quick to save and load.
+  slim(s) {
+    const p = s.pts, n = p.length / 4;
+    if (n < 3) return false;
+    const W = this.XW, L = this.L, keep = new Uint8Array(n), tol = 0.33 * 0.33, stack = [[0, n - 1]];
+    keep[0] = keep[n - 1] = 1;
+    while (stack.length) {
+      const [a, b] = stack.pop();
+      const ax = p[a * 4] * W, ay = p[a * 4 + 1] * L, dx = p[b * 4] * W - ax, dy = p[b * 4 + 1] * L - ay, len = dx * dx + dy * dy;
+      let far = -1, best = tol;
+      for (let i = a + 1; i < b; i++) {
+        const x = p[i * 4] * W - ax, y = p[i * 4 + 1] * L - ay;
+        const t = len ? Math.max(0, Math.min(1, (x * dx + y * dy) / len)) : 0, ex = x - t * dx, ey = y - t * dy, d = ex * ex + ey * ey;
+        if (d > best) { best = d; far = i; }
+      }
+      if (far > 0) { keep[far] = 1; stack.push([a, far], [far, b]); }
+    }
+    const out = [];
+    for (let i = 0; i < n; i++) if (keep[i]) out.push(p[i * 4], p[i * 4 + 1], p[i * 4 + 2], p[i * 4 + 3]);
+    if (out.length === p.length) return false;
+    s.pts = out; this.spans.delete(s);
+    return true;
   },
   spans: new WeakMap(),
   span(s) { // [top, bottom (lines), length, left, right (page widths)] of a stroke, remembered until it changes
@@ -2014,12 +2055,18 @@ async function importBackup(data) { // adds what's missing; never overwrites or 
 }
 
 async function loadAll() {
-  try {
-    S.profiles = await Store.loadProfiles();
-    const [a, b] = await Promise.all([Store.loadPerson('p1'), Store.loadPerson('p2')]);
-    S.data.p1 = a; S.data.p2 = b;
-  } catch (e) {
-    if (e.code === 401) askPasscode(); else toast('Couldn’t load notes. Check your connection.');
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const rev = Store.mode === 'remote' ? await Store.version() : null;
+      S.profiles = await Store.loadProfiles();
+      const [a, b] = await Promise.all([Store.loadPerson('p1'), Store.loadPerson('p2')]);
+      S.data.p1 = a; S.data.p2 = b; Store.rev = rev;
+      return;
+    } catch (e) {
+      if (e.code === 401) { askPasscode(); return; }
+      if (attempt >= 3) { toast('Couldn’t load notes. Check your connection.'); return; }
+      await new Promise(r => setTimeout(r, 800 * attempt)); // a hiccup: try again before giving up
+    }
   }
 }
 
@@ -2031,10 +2078,14 @@ async function poll() {
   if (active && active.matches('input') && app.contains(active)) return; // don't interrupt typing
   if (Sheet.busyNow() || (window.speechSynthesis && speechSynthesis.speaking)) return;
   try {
+    // ask the tiny "anything changed?" question first; only download everything when the answer is yes
+    const rev = await Store.version();
+    if (rev != null && rev === Store.rev) return;
     const before = JSON.stringify([S.profiles, S.data]);
     S.profiles = await Store.loadProfiles();
     S.data.p1 = await Store.loadPerson('p1');
     S.data.p2 = await Store.loadPerson('p2');
+    Store.rev = rev;
     if (JSON.stringify([S.profiles, S.data]) !== before) {
       const scroll = $('.desk')?.scrollTop;
       render();

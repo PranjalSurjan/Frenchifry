@@ -8,10 +8,41 @@ English-style pronunciation (from Wiktionary) that you can tap to hear in a Fren
 
 - `index.html` – the app
 - `pron.js` – sound spellings (Wiktionary lookup, plus a spelling-rule guess when a word isn't found)
-- `api/data.js` – saves notes so both tablets stay in sync
-- `api/handwriting.js` – sends S Pen strokes to Google's free handwriting reader
+- `functions/api/data.js` – saves notes so both tablets stay in sync (Cloudflare Pages + D1)
+- `functions/api/handwriting.js` – sends S Pen strokes to Google's free handwriting reader (Cloudflare)
+- `api/data.js`, `api/handwriting.js` – the same two for Vercel (kept as the backup)
+- `vercel.json` – tells Vercel not to deploy this `cloudflare` branch, so the Vercel app stays as it is
 
-## Put it on Vercel
+## Put it on Cloudflare Pages (free, no card)
+
+The app runs from the **`cloudflare`** branch of this repository. The notes live in a free Cloudflare
+D1 database. On its first run, the app copies your existing notes over from the old Upstash database,
+only reading from Upstash and never changing it.
+
+1. **Create the database.** In the Cloudflare dashboard open **Storage & Databases → D1 SQL Database →
+   Create**, and name it `french-notes`.
+2. **Create the site.** Open **Workers & Pages → Create → Pages → Connect to Git**, pick this repository, then:
+   - **Production branch:** `cloudflare`
+   - **Framework preset:** None. Leave **Build command** empty and set **Build output directory** to `/`.
+   - Click **Save and Deploy**.
+3. **Connect the database.** In the new Pages project open **Settings → Bindings → Add → D1 database**:
+   variable name `DB`, database `french-notes`.
+4. **Add the settings.** In **Settings → Variables and Secrets**, add these three (as Secrets):
+   - `APP_PASSCODE`: the same passcode you use now.
+   - `UPSTASH_REDIS_REST_URL`: copy the value of `KV_REST_API_URL` from Vercel (**Project → Settings →
+     Environment Variables**, click to reveal), or the REST URL in the Upstash console.
+   - `UPSTASH_REDIS_REST_TOKEN`: copy `KV_REST_API_READ_ONLY_TOKEN` from the same place. The *read-only*
+     token means the copy can't change anything in Upstash.
+5. **Redeploy.** Open **Deployments**, then **⋯ → Retry deployment** on the latest one, so the database
+   and settings take effect.
+6. **Open it.** Open your `https://<name>.pages.dev` link, enter the passcode and choose whose tablet it is.
+   Your notes appear; they were copied on the first load. On each tablet, use **Add to Home screen**
+   again for the new link.
+7. Once both of you see your notes, you can delete the two `UPSTASH_…` settings from Cloudflare.
+
+Cloudflare's free plan never bills you; going over a limit would only pause saving until the next day.
+
+## Put it on Vercel (backup)
 
 1. Create a new GitHub repository and upload all these files (keep the `api` folder).
 2. In Vercel, choose **Add New → Project** and import that repository. No build settings are needed.

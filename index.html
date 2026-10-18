@@ -333,6 +333,7 @@ const I = {
   trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  note: '<svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>',
   grip: '<svg viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></g></svg>',
   chevron: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
   minus: '<svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>',
@@ -526,6 +527,77 @@ const wordsOf = (pid, page) => !page ? [] : [
 // Saved with the page as ink = { strokes: [{ id, c: colour, l: line, r: 'fr' | 'en' | 'free', t0, pts: [x, y, pressure, ms, …] }],
 // lines: { [line]: { fr, sound, ipa, guessed } } }. x is a share of the page width, y is measured in ruled lines.
 // ======================================================================
+// ======================================================================
+// Pen sound: soft chalk-on-blackboard or marker-on-whiteboard while you write. Made live from filtered
+// noise, no sound files. It follows the pen: silent when it's still, louder and a little brighter as you
+// write faster or press harder, and it fades the moment you stop. Squeaky high frequencies are cut off.
+// ======================================================================
+const PenSound = {
+  kind: LS.get('penSound', 'chalk'), // 'chalk' | 'marker' | 'off'
+  ctx: null, gain: null, voice: null, buffers: null,
+  setup() {
+    if (this.ctx) return true;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return false;
+    const ctx = this.ctx = new AC();
+    this.buffers = { chalk: this.noise(ctx, true), marker: this.noise(ctx, false) };
+    this.gain = ctx.createGain(); this.gain.gain.value = 0;
+    this.gain.connect(ctx.destination);
+    return true;
+  },
+  noise(ctx, gritty) { // 2 s of looping noise: chalk gets tiny bursts of grit, marker is a smooth hiss
+    const n = ctx.sampleRate * 2, buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+    let grit = 0, soft = 0;
+    for (let i = 0; i < n; i++) {
+      const w = Math.random() * 2 - 1;
+      if (gritty) {
+        if (Math.random() < 0.0035) grit = 0.3 + Math.random() * 0.45;
+        grit *= 0.9985;
+        d[i] = w * (0.35 + grit);
+      } else { soft += (w - soft) * 0.35; d[i] = soft * 1.8; }
+    }
+    return buf;
+  },
+  voiceUp() { // the noise, shaped by filters for the chosen sound
+    if (this.voice && this.voice.kind === this.kind) return;
+    if (this.voice) try { this.voice.src.stop(); } catch (e) { }
+    const ctx = this.ctx, chalk = this.kind === 'chalk', src = ctx.createBufferSource();
+    src.buffer = this.buffers[this.kind]; src.loop = true;
+    const filter = (type, f, q) => { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q) b.Q.value = q; return b; };
+    const hp = filter('highpass', chalk ? 900 : 250), band = filter('bandpass', chalk ? 2000 : 900, 0.8), lp = filter('lowpass', chalk ? 4300 : 3000);
+    src.connect(hp).connect(band).connect(lp).connect(this.gain);
+    src.start();
+    this.voice = { kind: this.kind, src, band };
+  },
+  unlock() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => { }); },
+  start() { if (this.kind === 'off' || !this.setup()) return; this.unlock(); this.voiceUp(); },
+  move(dist, ms, pressure, at) { // the pen moved dist page px in ms milliseconds
+    if (this.kind === 'off' || !this.voice) return;
+    const now = at ?? this.ctx.currentTime, g = this.gain.gain, chalk = this.kind === 'chalk';
+    const speed = dist / ms; // about 0.2 px/ms when writing slowly, 2 when quick
+    const level = Math.min(1, Math.pow(speed / 1.4, 0.7)) * (0.55 + 0.45 * Math.min(1, pressure * 1.6)) * (chalk ? 0.42 : 0.4);
+    g.cancelAndHoldAtTime ? g.cancelAndHoldAtTime(now) : g.cancelScheduledValues(now);
+    g.setTargetAtTime(level, now, 0.02);
+    g.setTargetAtTime(0, now + 0.07, 0.05); // fades out by itself if the pen stops moving
+    this.voice.band.frequency.setTargetAtTime((chalk ? 1800 : 800) + Math.min(speed, 2) * (chalk ? 500 : 300), now, 0.05);
+  },
+  stop(at) {
+    if (!this.ctx) return;
+    const now = at ?? this.ctx.currentTime, g = this.gain.gain;
+    g.cancelAndHoldAtTime ? g.cancelAndHoldAtTime(now) : g.cancelScheduledValues(now);
+    g.setTargetAtTime(0, now, 0.03);
+  },
+  set(kind) { // from the ♪ menu; plays a short scribble so you can hear it
+    this.kind = kind; LS.set('penSound', kind);
+    if (kind === 'off') { this.stop(); return; }
+    this.start();
+    let i = 0;
+    const tick = () => { if (i++ < 16) { this.move(5 + 5 * Math.abs(Math.sin(i * 0.7)), 16, 0.6); setTimeout(tick, 16); } else this.stop(); };
+    tick();
+  },
+};
+document.addEventListener('visibilitychange', () => { if (PenSound.ctx && document.hidden) PenSound.ctx.suspend().catch(() => { }); });
+
 const ARROW_GAP = 10, ARROW_W = 34, ERASER_R = 14;
 const LOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
 const Sheet = {
@@ -671,6 +743,7 @@ const Sheet = {
     if (this.erasing(e)) { this.cur.erased = []; this.showHover(e); this.erase(e); this.erased(); return; }
     this.hover.hidden = true;
     const s = { id: uid(), c: S.ink, t0: Date.now(), pts: [] };
+    PenSound.start();
     if (this.tool === 'free' || this.free(e)) s.r = 'free'; // Free pen in the toolbar: plain ink
     this.cur.stroke = s;
     this.addPoint(s, e);
@@ -696,6 +769,8 @@ const Sheet = {
     if (!c || e.pointerId !== c.pointerId) return;
     let list = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
     if (!list.length) list = [e];
+    const since = c.t;
+    let travelled = 0;
     for (const ev of list) {
       // pointermove repeats samples pointerrawupdate already drew: skip older ones and exact repeats
       if (ev.timeStamp < c.t || (ev.timeStamp === c.t && ev.clientX === c.x && ev.clientY === c.y)) continue;
@@ -705,9 +780,11 @@ const Sheet = {
       if (c.erased) { c.x = ev.clientX; c.y = ev.clientY; this.erase(ev); continue; }
       if (far < 0.7) continue; // too close to the last sample to matter
       c.x = ev.clientX; c.y = ev.clientY;
+      travelled += far;
       this.addPoint(c.stroke, ev);
       this.piece(c.stroke, c.stroke.pts.length / 4 - 1);
     }
+    if (!c.erased && travelled) PenSound.move(travelled / this.z, Math.max(4, c.t - since), e.pressure || 0.5);
     if (c.erased) { this.erased(); this.showHover(e); }
     else { const line = (c.y - this.rect.top) / this.z / this.L; if (line > this.rows - 3) this.grow(Math.floor(line)); }
   },
@@ -718,6 +795,7 @@ const Sheet = {
     if (!c || e.pointerId !== c.pointerId) return;
     e.preventDefault(); e.stopPropagation();
     this.cur = null;
+    PenSound.stop(); PenSound.unlock(); // lifting the pen also lets the browser start sound (a "user gesture")
     if (c.moved) this.swallowUntil = performance.now() + 400;
     if (c.erased) { if (c.erased.length) { this.record({ erased: c.erased }); this.changed(c.erased.map(x => x.stroke), 500); } return; }
     const s = c.stroke;
@@ -1677,6 +1755,7 @@ function renderToolbarOnly() {
     <button class="tool" data-act="zoomreset" aria-label="Reset zoom to 100%">${Math.round(Zoom.z * 100)}%</button>
     <button class="tool" data-act="zoomin" aria-label="Zoom in">${I.plus}</button>
     <button class="tool" data-act="fontsize" aria-label="Text size" title="Text size">Aa</button>
+    <button class="tool" data-act="pensound" aria-label="Pen sound" title="Pen sound">${I.note}</button>
   `;
   Palette.render(); // the floating palette shows the same tool and colour
 }
@@ -1785,6 +1864,11 @@ app.addEventListener('click', async ev => {
     case 'mode-pen': Sheet.setTool('pen'); toggleMode('pen'); break;
     case 'freepen': Sheet.setTool(Sheet.tool === 'free' ? 'pen' : 'free'); renderToolbarOnly(); break;
     case 'eraser': Sheet.setTool(Sheet.tool === 'eraser' ? 'pen' : 'eraser'); renderToolbarOnly(); break;
+    case 'pensound': {
+      const kinds = [['Chalk (blackboard)', 'chalk'], ['Marker (whiteboard)', 'marker'], ['Off', 'off']];
+      popover(t, kinds.map(([label, k]) => ({ label: (k === PenSound.kind ? '✓ ' : '    ') + label, run: () => PenSound.set(k) })));
+      break;
+    }
     case 'fontsize': { // size of the printed text on the page: boxes, corrections, arrows, typed lines, title
       const sizes = [['Small', 0.85], ['Normal', 1], ['Large', 1.2], ['Extra large', 1.4]], cur = prefs.fs || 1;
       popover(t, sizes.map(([label, v]) => ({ label: (v === cur ? '✓ ' : '    ') + label, run: () => {

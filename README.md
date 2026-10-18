@@ -82,6 +82,9 @@ Cloudflare's free plan never bills you; going over a limit would only pause savi
   when the French doesn't say what your English says). Tap the pronunciation box for the explanation, then
   fix it yourself by rubbing it out and rewriting it. Tap **✕** on a correction to **ignore** it; it won't come
   back for that line unless you change the French or the English.
+- **♪** in the toolbar sets the **pen sound**: soft **Chalk** on a blackboard (the default), a smooth felt-tip
+  **Marker** on a whiteboard, or **Off**. It follows your pen: silent when still, a bit louder and brighter when you
+  write faster or press harder. It uses the tablet's media volume.
 - **Aa** in the toolbar sets the size of the printed text on the page (pronunciation boxes, corrections,
   arrows, typed lines, title): Small, Normal, Large or Extra large. The page fills the full screen width.
   - **Spelling and grammar**, for single words and whole sentences, come from LanguageTool's free checker.

@@ -106,6 +106,9 @@ Cloudflare's free plan never bills you; going over a limit would only pause savi
   with their words. The bar above the box has **Everything below**, **Delete** and **Done**. Undo puts it back.
 - **Add line**: tap it, then tap the line where you missed something. Everything from that line down moves
   down to make room for one word and its pronunciation box, and you're back on the pen. Undo removes it.
+- **Page break** (on the toolbar and the floating bar): tap it, then tap the line where a new page should start.
+  Like Word's page view, the sheet ends there, a grey gap follows, and **Page 2** (3, 4…) starts below with
+  everything from that line on. Nothing can be written in the gap. Tap **✕** in the gap (or Undo) to remove it.
 - Only the S Pen writes; fingers scroll and tap. Pick the **eraser** to rub out strokes; the arrow and box
   update by themselves. **Undo / Redo** step through your writing.
 - Tap **Type** to add a line with the keyboard instead (`que -> than` works there too). Typed lines sit at

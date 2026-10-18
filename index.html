@@ -190,6 +190,15 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .ink-box.playing { box-shadow: 0 0 0 2px var(--c, var(--ink)); }
 /* highlighter over a French word that doesn't look right for its English */
 .ink-flag { position: absolute; border-radius: 6px; background: rgba(255, 70, 70, .3); mix-blend-mode: multiply; pointer-events: none; }
+/* page break: the sheet ends, a grey gap with soft shadows, and the next sheet starts (like Word's page view) */
+.pbreak {
+  position: absolute; left: calc(var(--pad-l) * -1); right: calc(var(--pad-r) * -1); pointer-events: auto;
+  display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--desk);
+  box-shadow: inset 0 10px 10px -10px rgba(0,0,0,.28), inset 0 -10px 10px -10px rgba(0,0,0,.28);
+}
+.pbreak span { font-size: .8rem; font-weight: 600; color: var(--muted); background: var(--chrome); border-radius: 12px; padding: 4px 12px; }
+.pbreak button { width: 32px; height: 32px; border-radius: 50%; background: var(--chrome); color: var(--muted); font-size: .9rem; }
+.pbreak button:active { background: var(--chip); }
 /* search inside a page */
 .findbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--chrome); border-bottom: 1px solid var(--hair); flex: none; }
 .findbar[hidden] { display: none; }
@@ -342,6 +351,7 @@ const I = {
   eraser: '<svg viewBox="0 0 24 24"><path d="M15 4l5 5-10 10H6l-3-3z"/><path d="M10 9l5 5M13 20h8"/></svg>',
   scribble: '<svg viewBox="0 0 24 24"><path d="M3 17c3-7 5-7 6-3s2 3 4-1 4-5 5-2 1 4 3 3"/></svg>',
   select: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/></svg>',
+  pagebreak: '<svg viewBox="0 0 24 24"><path d="M5 3v5h14V3M5 21v-5h14v5"/><path d="M3 12h3M9 12h2M13 12h2M18 12h3"/></svg>',
   addline: '<svg viewBox="0 0 24 24"><path d="M3 6h11M3 11h11M3 16h11M18 8v8M14 12h8"/></svg>',
   search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
   eye: '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -625,7 +635,7 @@ const PenSound = {
 };
 document.addEventListener('visibilitychange', () => { if (PenSound.ctx && document.hidden) PenSound.ctx.suspend().catch(() => { }); });
 
-const ARROW_GAP = 10, ARROW_W = 34, ERASER_R = 14;
+const ARROW_GAP = 10, ARROW_W = 34, ERASER_R = 14, PAGE_GAP = 2; // PAGE_GAP: ruled lines taken by a page break
 const LOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
 const Sheet = {
   el: null, canvas: null, ctx: null, hover: null, marksEl: null, rect: null, L: 56, rows: 0, observer: null, z: 1, W: 1,
@@ -663,10 +673,11 @@ const Sheet = {
     el.addEventListener('contextmenu', e => { if (this.cur || el.classList.contains('pen-near')) e.preventDefault(); }, true);
     el.addEventListener('click', e => {
       if (performance.now() < this.swallowUntil) { e.preventDefault(); e.stopPropagation(); return; } // a stroke that ended on a box
-      if (this.tool === 'addline' && !this.readonly) { // a tap (pen or finger) says where the new line goes
+      if ((this.tool === 'addline' || this.tool === 'pagebreak') && !this.readonly) { // a tap (pen or finger) says where
         e.preventDefault(); e.stopPropagation();
         this.measure();
-        this.addLineAt(Math.floor(this.pagePoint(e)[1] / this.L));
+        const line = Math.floor(this.pagePoint(e)[1] / this.L);
+        if (this.tool === 'addline') this.addLineAt(line); else this.insertBreak(line);
         this.setTool('pen'); renderToolbarOnly();
       }
     }, true);
@@ -711,6 +722,7 @@ const Sheet = {
     const fill = desk ? Math.ceil((desk.clientHeight / this.z - this.el.offsetTop) / this.L) : 0;
     let used = line + 1;
     for (const s of this.ink.strokes) used = Math.max(used, s.l + 2);
+    for (const b of this.ink.breaks || []) used = Math.max(used, b + PAGE_GAP + 1);
     const n = Math.max(12, fill + screen + this.extra, used + screen);
     if (n > this.rows) { this.rows = n; this.el.style.height = n * this.L + 'px'; }
   },
@@ -759,13 +771,15 @@ const Sheet = {
     this.hover.style.transform = `translate(${(e.clientX - r.left) / this.z}px, ${(e.clientY - r.top) / this.z}px)`;
   },
   down(e) {
-    if (this.tool === 'addline') return; // the tap is handled as a click, so a finger swipe still scrolls
+    if (this.tool === 'addline' || this.tool === 'pagebreak') return; // the tap is handled as a click, so a finger swipe still scrolls
     if (this.tool === 'select' && !this.readonly && this.selectDown(e)) return;
     if (e.pointerType !== 'pen') return;
     this.sawPen();
     if (this.readonly) return;
     if (this.cur) { e.preventDefault(); return; }
-    if (e.target.closest('.ink-box, .ink-ignore')) return; // a pen tap on a pronunciation box (or ✕) works as a tap
+    if (e.target.closest('.ink-box, .ink-ignore, .pbreak')) return; // a pen tap on a box, a ✕ or a page gap works as a tap
+    this.measure();
+    if (this.breakAt(Math.floor(this.pagePoint(e)[1] / this.L)) != null) return; // no writing in the gap between pages
     e.preventDefault(); e.stopPropagation();
     try { this.el.setPointerCapture(e.pointerId); } catch (err) { }
     clearTimeout(this.readTimer); this.readTimer = null; // still writing: wait before reading
@@ -998,7 +1012,9 @@ const Sheet = {
   marks() { // the arrow after each word and the locked pronunciation box under it
     if (!this.marksEl || !this.rect) return;
     const L = this.L, lines = this.ink.lines;
-    let html = '';
+    let html = (this.ink.breaks || []).map((b, k) => // the grey gap between two sheets, like Word's page view
+      `<div class="pbreak" style="top:${b * L}px;height:${PAGE_GAP * L}px"><span>Page ${k + 2}</span>
+        ${this.readonly ? '' : `<button data-remove-break="${b}" aria-label="Remove this page break" title="Remove page break">✕</button>`}</div>`).join('');
     for (const l of new Set(this.ink.strokes.filter(s => s.r === 'fr').map(s => s.l))) {
       const res = lines[l], busy = this.busy[l];
       if (!res && !busy) continue;
@@ -1072,18 +1088,38 @@ const Sheet = {
   },
   // ---- Add line: tap a line and everything from there down moves down to make room ----
   addLineAt(line) {
-    const below = this.ink.strokes.filter(s => s.l >= line);
-    if (!below.length) { toast('There’s no writing on or below this line, so there’s already room.'); return; }
-    this.sel = new Set(below.map(s => s.id));
-    this.moveSel(0, 2); // two ruled lines: one for the word, one for its pronunciation box
-    this.select(null);
+    const below = this.ink.strokes.filter(s => s.l >= line), breaks = this.ink.breaks || [];
+    if (!below.length && !breaks.some(b => b >= line)) { toast('There’s no writing on or below this line, so there’s already room.'); return; }
+    this.shiftFrom(line, 2, breaks.map(b => b >= line ? b + 2 : b)); // two ruled lines: the word and its pronunciation box
     toast('Added a line. Undo removes it.');
+  },
+  shiftFrom(line, dl, nextBreaks) { // move everything written on or below a line, as one undoable step
+    this.sel = new Set(this.ink.strokes.filter(s => s.l >= line).map(s => s.id));
+    this.moveSel(0, dl, nextBreaks);
+    this.select(null);
+  },
+
+  // ---- Page breaks, like Word: the sheet ends, a grey gap, and a new sheet starts below ----
+  // ink.breaks holds the first line of each gap; a gap is PAGE_GAP ruled lines tall and can't be written in.
+  breakAt(line) { return (this.ink.breaks || []).find(b => line >= b && line < b + PAGE_GAP); },
+  insertBreak(line) {
+    const breaks = this.ink.breaks || [];
+    const inside = this.breakAt(line); if (inside != null) line = inside; // tapped on a gap: put the new one just before it
+    this.shiftFrom(line, PAGE_GAP, [...breaks.map(b => b >= line ? b + PAGE_GAP : b), line]);
+    toast('Page break added. Undo, or ✕ in the gap, removes it.');
+  },
+  removeBreak(b) {
+    if (this.readonly || !(this.ink.breaks || []).includes(b)) return;
+    // whatever sits below the gap moves back up into its place
+    this.sel = new Set(this.ink.strokes.filter(s => s.l >= b + PAGE_GAP).map(s => s.id));
+    this.moveSel(0, -PAGE_GAP, this.ink.breaks.filter(x => x !== b).map(x => x > b ? x - PAGE_GAP : x));
+    this.select(null);
   },
   // ---- Select tool: draw around writing (or tap a line to take everything from there down), then drag it ----
   setTool(t) { this.tool = t; if (t !== 'select') this.select(null); },
   pagePoint(e) { return [(e.clientX - this.rect.left) / this.z, (e.clientY - this.rect.top) / this.z]; },
   selectDown(e) {
-    if (e.target.closest('.sel-bar, .ink-box, .ink-ignore')) return true; // let taps on those buttons through
+    if (e.target.closest('.sel-bar, .ink-box, .ink-ignore, .pbreak')) return true; // let taps on those buttons through
     const onBox = e.target.closest('.sel-box');
     if (!onBox && e.pointerType !== 'pen') return true; // fingers drag a selection; anywhere else they scroll
     e.preventDefault(); e.stopPropagation();
@@ -1155,8 +1191,10 @@ const Sheet = {
     const d = this.drag; this.drag = null; this.marksEl.hidden = false;
     if (d.dx || d.dl) this.moveSel(d.dx, d.dl); else { this.redraw(); this.renderSel(); }
   },
-  moveSel(dx, dl) {
+  moveSel(dx, dl, nextBreaks) { // nextBreaks: where the page breaks end up, when this move shifts them too
     const sel = this.sel, ids = [...sel], before = JSON.parse(JSON.stringify(this.ink.lines));
+    const breaksBefore = [...(this.ink.breaks || [])];
+    if (nextBreaks) this.ink.breaks = [...nextBreaks].sort((a, b) => a - b);
     const fr = this.ink.strokes.filter(s => s.r === 'fr');
     // a word's pronunciation travels with it when the whole word moves; a word that's split up is read again
     const moved = [...new Set(fr.filter(s => sel.has(s.id)).map(s => s.l))];
@@ -1172,7 +1210,7 @@ const Sheet = {
       this.enDirty.add(l + dl); // check the word against the English that's now beside it
     }
     for (const s of this.ink.strokes) if (s.r === 'en' && sel.has(s.id)) { this.enDirty.add(s.l); this.enDirty.add(s.l - dl); }
-    this.record({ move: { ids, dx, dl, before, after: JSON.parse(JSON.stringify(lines)) } });
+    this.record({ move: { ids, dx, dl, before, after: JSON.parse(JSON.stringify(lines)), breaksBefore, breaksAfter: [...(this.ink.breaks || [])] } });
     this.schedule(300); this.redraw(); this.marks(); this.save(); this.grow(); this.renderSel();
   },
   shift(ids, dx, dl) {
@@ -1205,6 +1243,7 @@ const Sheet = {
       const k = back ? -1 : 1;
       this.shift(a.move.ids, a.move.dx * k, a.move.dl * k);
       this.ink.lines = JSON.parse(JSON.stringify(back ? a.move.before : a.move.after));
+      if (a.move.breaksBefore) this.ink.breaks = [...(back ? a.move.breaksBefore : a.move.breaksAfter)];
       this.redraw(); this.marks(); this.save(); this.grow(); this.renderSel();
       return;
     }
@@ -1786,6 +1825,7 @@ const Palette = {
         ${btn('freepen', t === 'free', I.scribble, 'Free pen')}
         ${btn('select', t === 'select', I.select, 'Select and move')}
         ${btn('addline', t === 'addline', I.addline, 'Add line')}
+        ${btn('pagebreak', t === 'pagebreak', I.pagebreak, 'Page break')}
         ${btn('eraser', t === 'eraser', I.eraser, 'Eraser')}
         <button class="tool" data-act="palette-colors" aria-expanded="${this.colors}" aria-label="Ink colour" title="Ink colour"><span class="cur-color" style="background:${S.ink}"></span></button>
         ${this.colors ? `<div class="colors-pop ${below ? 'below' : ''}" role="group" aria-label="Ink colours">
@@ -1846,6 +1886,7 @@ function renderToolbarOnly() {
       <button class="tool labeled" aria-pressed="${Sheet.tool === 'free'}" data-act="freepen" aria-label="Free pen: plain ink, not read">${I.scribble}Free</button>
       <button class="tool labeled" aria-pressed="${Sheet.tool === 'select'}" data-act="select" aria-label="Select and move writing">${I.select}Select</button>
       <button class="tool labeled" aria-pressed="${Sheet.tool === 'addline'}" data-act="addline" aria-label="Add a line: then tap where it should go">${I.addline}Add line</button>
+      <button class="tool labeled" aria-pressed="${Sheet.tool === 'pagebreak'}" data-act="pagebreak" aria-label="Page break: then tap where the new page starts">${I.pagebreak}Page break</button>
       <button class="tool" aria-pressed="${Sheet.tool === 'eraser'}" data-act="eraser" aria-label="Eraser">${I.eraser}</button>
       <button class="tool" aria-pressed="${S.padOpen && S.inputMode === 'keys'}" data-act="mode-keys" aria-label="Type">${I.keyboard}</button>
       <span class="sep"></span>
@@ -1952,6 +1993,7 @@ app.addEventListener('click', async ev => {
   if (t.dataset.open) { go(`#/${S.tab || S.me}/${t.dataset.open}`); return; }
   if (t.dataset.ink) { setInk(t.dataset.ink); return; }
   const row = t.closest('.row');
+  if (t.dataset.removeBreak !== undefined) { Sheet.removeBreak(+t.dataset.removeBreak); return; }
   if (t.dataset.inkIgnore !== undefined) { Sheet.ignore(+t.dataset.inkIgnore); return; }
   if (t.dataset.inkLine !== undefined) { Sheet.say(+t.dataset.inkLine); return; }
   if (row && t.matches('[data-speak]')) {
@@ -1990,6 +2032,10 @@ app.addEventListener('click', async ev => {
     case 'palette-open': Palette.toggle(true); break;
     case 'palette-min': Palette.toggle(false); break;
     case 'palette-colors': Palette.colors = !Palette.colors; Palette.render(); break;
+    case 'pagebreak':
+      Sheet.setTool(Sheet.tool === 'pagebreak' ? 'pen' : 'pagebreak'); renderToolbarOnly();
+      if (Sheet.tool === 'pagebreak') toast('Tap the line where the new page should start.');
+      break;
     case 'addline':
       Sheet.setTool(Sheet.tool === 'addline' ? 'pen' : 'addline'); renderToolbarOnly();
       if (Sheet.tool === 'addline') toast('Tap the line where you want to add a new line.');

@@ -76,6 +76,9 @@ Cloudflare's free plan never bills you; going over a limit would only pause savi
   le → the
   [luh]
   ```
+- **Hidden translation**: next to each pronunciation box is a small **👁 EN** chip. The app looks up the English
+  for your French word (a dictionary for single words like "le chat", a free translator for sentences) but keeps it
+  hidden; tap the chip and it shows for 3 seconds, then hides again.
 - **Write the English meaning by hand** after the arrow. It stays as ink; nothing is ever corrected.
   One word or phrase per line; anything you write to the left of the arrow counts as French.
 - **Mistake highlighter**: once you've written the English, the app checks your French against it. Your

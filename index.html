@@ -186,6 +186,13 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   font-family: var(--ui); font-size: .95rem; color: #9b3a3a;
 }
 .ink-ignore:active { background: rgba(212, 42, 42, .12); }
+/* the hidden English translation: a small EN chip that shows the English for 3 seconds when tapped */
+.ink-tr {
+  pointer-events: auto; height: 100%; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 10px; border-radius: 9px; white-space: nowrap;
+  border: 1px solid var(--hair); background: var(--chrome); color: var(--muted); font-size: .8rem; font-weight: 600; letter-spacing: .04em;
+}
+.ink-tr svg { width: 16px; height: 16px; }
+.ink-tr.show { font-family: var(--hand); font-size: calc(1.25rem * var(--fs, 1)); font-weight: 400; letter-spacing: 0; color: #2f6fe4; border-color: rgba(47,111,228,.45); background: rgba(47,111,228,.07); }
 .ink-box svg { width: 13px; height: 13px; color: var(--muted); opacity: .6; }
 .ink-box.playing { box-shadow: 0 0 0 2px var(--c, var(--ink)); }
 /* highlighter over a French word that doesn't look right for its English */
@@ -705,8 +712,11 @@ const Sheet = {
     }
     this.grow(); this.fit();
     if (!readonly) { // lines written before the English was kept as text: read it once, so search can find it
+      let n = 0;
       for (const [l, res] of Object.entries(ink.lines)) {
         if (res && res.fr && res.en == null && ink.strokes.some(s => s.r === 'en' && s.l === +l)) this.enOnly.add(+l);
+        // lines written before translations were kept: fetch them, a few at a time
+        if (res && res.fr && !res.tr && !res.failed) setTimeout(() => this.translate(+l), 800 + 400 * n++);
       }
     }
     if ((this.dirty.size || this.enOnly.size) && !this.readTimer) this.schedule(this.dirty.size ? 0 : 1500);
@@ -777,7 +787,7 @@ const Sheet = {
     this.sawPen();
     if (this.readonly) return;
     if (this.cur) { e.preventDefault(); return; }
-    if (e.target.closest('.ink-box, .ink-ignore, .pbreak')) return; // a pen tap on a box, a ✕ or a page gap works as a tap
+    if (e.target.closest('.ink-box, .ink-ignore, .pbreak, .ink-tr')) return; // a pen tap on a box, a ✕ or a page gap works as a tap
     this.measure();
     if (this.breakAt(Math.floor(this.pagePoint(e)[1] / this.L)) != null) return; // no writing in the gap between pages
     e.preventDefault(); e.stopPropagation();
@@ -933,9 +943,11 @@ const Sheet = {
     delete this.busy[line];
     const prev = this.ink.lines[line];
     if (prev && prev.ignored) res.ignored = prev.ignored; // still applies if the word reads the same
+    if (prev && prev.fr === res.fr && prev.tr) res.tr = prev.tr; // same word: keep its translation
     this.ink.lines[line] = res;
     this.marks(); this.save();
     this.judge(line);
+    this.translate(line);
   },
   // Once the English after the arrow is written, read it (your ink stays as it is) and check the French
   // word against it. A doubtful word only gets a highlighter mark; nothing is ever corrected for you.
@@ -958,6 +970,22 @@ const Sheet = {
     const ignored = cur.ignored === fr + '|' + Judge.norm(list[0]);
     if (check.v === 'wrong' && !ignored) cur.check = { en: list[0], issues: check.issues, meaning: check.meaning }; else delete cur.check;
     this.marks(); this.save();
+  },
+  // The English translation of each French word, fetched once and kept hidden behind a small EN chip.
+  async translate(line) {
+    const res = this.ink.lines[line];
+    if (!res || !res.fr || res.tr || this.readonly) return;
+    const fr = res.fr, tr = await translateFr(fr);
+    const cur = this.ink.lines[line];
+    if (!tr || !cur || cur.fr !== fr) return;
+    cur.tr = tr;
+    this.marks(); this.save();
+  },
+  shownTr: null, trTimer: null,
+  revealTr(line) { // tap the EN chip: show the translation for 3 seconds, then hide it again
+    this.shownTr = line; this.marks();
+    clearTimeout(this.trTimer);
+    this.trTimer = setTimeout(() => { this.shownTr = null; this.marks(); }, 3000);
   },
   say(line) { // tap a pronunciation box: hear the word (or try reading it again)
     const res = this.ink.lines[line];
@@ -1034,6 +1062,8 @@ const Sheet = {
             aria-label="${esc(busy ? 'Reading' : res.failed ? 'Couldn’t read, tap to retry' : 'Hear ' + res.fr + ', sounds like ' + label)}">${LOCK}${esc(label)}</button>
           ${!busy && res.check ? `<span class="ink-fix" aria-label="Correction: ${esc(fix || 'check this')}">${esc(fix || 'check this')}
             <button class="ink-ignore" data-ink-ignore="${l}" aria-label="Ignore this suggestion" title="Ignore">✕</button></span>` : ''}
+          ${!busy && res.tr ? `<button class="ink-tr ${this.shownTr === l ? 'show' : ''}" data-ink-tr="${l}" style="--c:${b.c}"
+            aria-label="${this.shownTr === l ? 'English: ' + esc(res.tr) : 'Show the English translation for 3 seconds'}">${I.eye}${this.shownTr === l ? esc(res.tr) : 'EN'}</button>` : ''}
         </div>`;
     }
     this.marksEl.innerHTML = html;
@@ -1119,7 +1149,7 @@ const Sheet = {
   setTool(t) { this.tool = t; if (t !== 'select') this.select(null); },
   pagePoint(e) { return [(e.clientX - this.rect.left) / this.z, (e.clientY - this.rect.top) / this.z]; },
   selectDown(e) {
-    if (e.target.closest('.sel-bar, .ink-box, .ink-ignore, .pbreak')) return true; // let taps on those buttons through
+    if (e.target.closest('.sel-bar, .ink-box, .ink-ignore, .pbreak, .ink-tr')) return true; // let taps on those buttons through
     const onBox = e.target.closest('.sel-box');
     if (!onBox && e.pointerType !== 'pen') return true; // fingers drag a selection; anywhere else they scroll
     e.preventDefault(); e.stopPropagation();
@@ -1594,6 +1624,68 @@ const Judge = {
   },
 };
 
+// French → English, remembered on this tablet ('' if it can't).
+// A single word, or an article and a word ("le chat", "l'école"), is looked up in the dictionary (English
+// Wiktionary): the free translator's top answer for short words is often a wrong user-submitted entry.
+// Longer phrases and sentences use the translator (MyMemory), skipping those user-submitted entries.
+async function translateFr(fr) {
+  const text = fr.trim(), key = 'tr2:' + text.toLowerCase();
+  const saved = LS.get(key, null);
+  if (saved) return saved;
+  const ART = { le: 'the', la: 'the', les: 'the', un: 'a', une: 'a', des: 'some', du: 'some' };
+  const words = text.split(/\s+/);
+  let lead = '', word = null;
+  if (words.length === 1) { const m = text.match(/^l['’](.+)$/i); if (m) { lead = 'the'; word = m[1]; } else word = text; }
+  else if (words.length === 2 && ART[words[0].toLowerCase()]) { lead = ART[words[0].toLowerCase()]; word = words[1]; }
+  let en = '';
+  if (word) {
+    const gloss = await dictionaryGloss(word);
+    if (gloss) en = lead ? `${lead === 'a' && /^[aeiou]/i.test(gloss) ? 'an' : lead} ${gloss}` : gloss;
+  }
+  if (!en) en = await translatorText(text);
+  if (!en || en.toLowerCase() === text.toLowerCase()) return ''; // nothing, or it came back untranslated
+  LS.set(key, en);
+  return en;
+}
+async function dictionaryGloss(word) { // "chat" → "cat", "mange" → "to eat"
+  try {
+    const glosses = [];
+    const take = defs => {
+      for (const t of defs) {
+        const g = t.replace(/\([^)]*\)/g, ' ').split(/[;,]/)[0].replace(/\s+/g, ' ').replace(/[.:]$/, '').trim();
+        if (g && !glosses.includes(g)) glosses.push(g);
+      }
+    };
+    const defs = await Judge.definitions(Judge.norm(word));
+    // grammar notes ("inflection of manger:", "first/third-person singular present indicative") aren't meanings
+    const grammar = t => /(plural|singular|feminine|masculine|inflection|participle|person|form) .*\bof\b/i.test(t)
+      || /^\s*(first|second|third|singular|plural|masculine|feminine|inflection|present|past|imperfect|future|conditional|subjunctive|imperative|indicative|participle)\b|-person\b/i.test(t);
+    const plain = defs.filter(t => !grammar(t));
+    if (plain.length) take(plain);
+    else { // only "plural of chat"-style entries: use the main word's meaning
+      const m = defs.map(t => t.match(/\bof\s+([\p{L}'’-]+)/u)).find(Boolean);
+      if (m) take((await Judge.definitions(Judge.norm(m[1]))).filter(t => !grammar(t)));
+    }
+    if (!glosses.length) return '';
+    const a = glosses[0]; // just the main meaning: second meanings are often odd ("warm, on heat")
+    return a.length > 40 ? a.slice(0, 38).replace(/\s+\S*$/, '') + '…' : a;
+  } catch (e) { return ''; }
+}
+async function translatorText(text) {
+  try {
+    const r = await fetch('https://api.mymemory.translated.net/get?langpair=fr|en&mt=1&q=' + encodeURIComponent(text));
+    if (!r.ok) return '';
+    const j = await r.json();
+    if (String(j.responseStatus) !== '200') return '';
+    const decode = s => new DOMParser().parseFromString(s || '', 'text/html').body.textContent.trim();
+    // prefer corpus / terminology / machine translations over user-submitted (MateCat) entries
+    const good = (j.matches || []).find(m => m.translation && !/matecat/i.test(m['created-by'] || '') && !/[<>]/.test(m.translation));
+    let en = decode(good ? good.translation : j.responseData && j.responseData.translatedText);
+    if (!/[.!?]$/.test(text)) en = en.replace(/[.!?”"]+$/, ''); // no full stop the French didn't have
+    return en;
+  } catch (e) { return ''; }
+}
+
 function editDistance(a, b) { // Levenshtein: how many letters to change to turn a into b
   const d = Array.from({ length: b.length + 1 }, (_, j) => j);
   for (let i = 1; i <= a.length; i++) {
@@ -1994,6 +2086,7 @@ app.addEventListener('click', async ev => {
   if (t.dataset.ink) { setInk(t.dataset.ink); return; }
   const row = t.closest('.row');
   if (t.dataset.removeBreak !== undefined) { Sheet.removeBreak(+t.dataset.removeBreak); return; }
+  if (t.dataset.inkTr !== undefined) { Sheet.revealTr(+t.dataset.inkTr); return; }
   if (t.dataset.inkIgnore !== undefined) { Sheet.ignore(+t.dataset.inkIgnore); return; }
   if (t.dataset.inkLine !== undefined) { Sheet.say(+t.dataset.inkLine); return; }
   if (row && t.matches('[data-speak]')) {

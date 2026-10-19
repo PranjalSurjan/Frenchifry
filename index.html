@@ -1823,10 +1823,10 @@ const Palette = {
       el.innerHTML = `<span class="grip" title="Drag to move">${I.grip}</span>
         ${btn('mode-pen', S.inputMode === 'pen' && t === 'pen', I.pen, 'French pen')}
         ${btn('freepen', t === 'free', I.scribble, 'Free pen')}
+        ${btn('eraser', t === 'eraser', I.eraser, 'Eraser')}
         ${btn('select', t === 'select', I.select, 'Select and move')}
         ${btn('addline', t === 'addline', I.addline, 'Add line')}
         ${btn('pagebreak', t === 'pagebreak', I.pagebreak, 'Page break')}
-        ${btn('eraser', t === 'eraser', I.eraser, 'Eraser')}
         <button class="tool" data-act="palette-colors" aria-expanded="${this.colors}" aria-label="Ink colour" title="Ink colour"><span class="cur-color" style="background:${S.ink}"></span></button>
         ${this.colors ? `<div class="colors-pop ${below ? 'below' : ''}" role="group" aria-label="Ink colours">
           ${inkChoices().map(c => `<button class="swatch" style="background:${c}" aria-pressed="${c === S.ink}" data-ink="${c}" aria-label="Ink colour ${c}"></button>`).join('')}

@@ -1826,7 +1826,6 @@ const Palette = {
         ${btn('eraser', t === 'eraser', I.eraser, 'Eraser')}
         ${btn('select', t === 'select', I.select, 'Select and move')}
         ${btn('addline', t === 'addline', I.addline, 'Add line')}
-        ${btn('pagebreak', t === 'pagebreak', I.pagebreak, 'Page break')}
         <button class="tool" data-act="palette-colors" aria-expanded="${this.colors}" aria-label="Ink colour" title="Ink colour"><span class="cur-color" style="background:${S.ink}"></span></button>
         ${this.colors ? `<div class="colors-pop ${below ? 'below' : ''}" role="group" aria-label="Ink colours">
           ${inkChoices().map(c => `<button class="swatch" style="background:${c}" aria-pressed="${c === S.ink}" data-ink="${c}" aria-label="Ink colour ${c}"></button>`).join('')}
@@ -1835,6 +1834,7 @@ const Palette = {
         ${btn('find', Find.open, I.search, 'Search this page')}
         <span class="sep"></span>
         ${btn('undo', false, I.undo, 'Undo')}${btn('redo', false, I.redo, 'Redo')}
+        ${btn('pagebreak', t === 'pagebreak', I.pagebreak, 'Page break')}
         <button class="tool" data-act="palette-min" aria-label="Tuck the pen tools away" title="Tuck away">${I.chevron}</button>`;
     }
     this.place();

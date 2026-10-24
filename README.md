@@ -126,6 +126,10 @@ Cloudflare's free plan never bills you; going over a limit would only pause savi
 - **⋮ on a typed line** lets you edit the French, fix the pronunciation, look it up again, or delete the line.
 - **Trash button on one of your home-page cards** deletes that page and all its lines after confirmation.
 - Your friend's pages are on their tab at the top, read only.
+- **Daily words** is a shared page pinned first on both home pages; it can't be deleted. Tap **New word** for a
+  common French word (both of you see the same one). Its meaning stays hidden until you tap **Show meaning**: the
+  English, the kind of word, how it sounds, and two short example sentences with translations (🔊 to hear them).
+  Earlier words are listed underneath to review.
 - **Backup**: in **Settings** (the gear on the home page), **Export backup** saves every page of both of you to
   one `.json` file in Downloads. **Import backup** adds back anything missing from such a file; it never
   overwrites or deletes the notes you have.

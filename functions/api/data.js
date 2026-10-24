@@ -8,6 +8,7 @@
 
 const PEOPLE = ['p1', 'p2'];
 const FIELD = /^(page|entry):[\w-]+$/;
+const SHARED = /^daily$/; // shared items both people see
 let ready = false; // tables exist and the one-time copy is done (per Worker instance)
 let copyError = null; // why the last copy from Upstash failed, shown by ?action=status
 
@@ -145,6 +146,13 @@ export async function onRequest({ request, env }) {
         status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
       });
     }
+    // Shared pages that belong to both of you (the Daily words page): stored once, not per person.
+    if (request.method === 'GET' && action === 'shared') {
+      const key = url.searchParams.get('key') || '';
+      if (!SHARED.test(key)) return json(400, { error: 'Unknown shared item' });
+      const row = await db.prepare('SELECT value FROM meta WHERE key = ?').bind('shared:' + key).first();
+      return json(200, { value: row ? JSON.parse(row.value) : null });
+    }
     if (request.method === 'GET' && action === 'version') {
       const row = await db.prepare("SELECT value FROM meta WHERE key = 'rev'").first();
       return json(200, { rev: row ? String(row.value) : '0' });
@@ -157,6 +165,11 @@ export async function onRequest({ request, env }) {
       const { fields, profiles } = body;
       const person = rawPut ? url.searchParams.get('person') : body.person;
       const field = rawPut ? url.searchParams.get('field') : body.field;
+      if (action === 'shared') {
+        if (!SHARED.test(body.key || '') || typeof body.value !== 'object') return json(400, { error: 'Bad shared item' });
+        const rev = await write(db, [db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').bind('shared:' + body.key, JSON.stringify(body.value))]);
+        return json(200, { ok: true, rev });
+      }
       if (action === 'profiles') {
         return json(200, { ok: true, rev: await write(db, [db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('profiles', ?)").bind(JSON.stringify(profiles))]) });
       }

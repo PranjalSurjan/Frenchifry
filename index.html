@@ -284,6 +284,37 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .card-meta small { color: var(--muted); font-size: .82rem; }
 .empty { max-width: 420px; margin: 12vh auto 0; text-align: center; color: var(--muted); line-height: 1.5; }
 .empty b { display: block; color: var(--text); font-size: 1.15rem; margin-bottom: 4px; }
+.empty.below { margin-top: 6vh; }
+
+/* ---------- Daily words ---------- */
+.daily-thumb { background-color: #f4fbf7; }
+.daily-thumb .big { font-size: 1.5rem; line-height: 34px; margin-bottom: 2px; }
+.daily { max-width: 760px; margin: 0 auto; padding: 8px 0 40px; }
+.daily-card { background: var(--paper); border-radius: 22px; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 28px rgba(0,0,0,.06); padding: 28px 28px 24px; text-align: center; }
+.daily-label { font-size: .85rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.daily-label .link { color: var(--ink); text-transform: none; letter-spacing: 0; font-weight: 600; text-decoration: underline; }
+.daily-word-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 14px 0 4px; }
+.daily-word { font-family: var(--hand); font-size: calc(3.2rem * var(--fs, 1)); color: var(--ink); line-height: 1.15; }
+.daily-meta { font-size: .8rem; color: var(--muted); }
+.daily-meaning { text-align: left; margin-top: 20px; padding-top: 18px; border-top: 1px dashed var(--hair); }
+.daily-en { font-family: var(--hand); font-size: 1.8rem; color: var(--text); }
+.daily-facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.daily-facts .chip { font-size: .8rem; background: var(--chip); border-radius: 12px; padding: 4px 10px; color: var(--muted); }
+.daily-ex { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 10px; }
+.daily-ex li { display: flex; gap: 6px; align-items: flex-start; }
+.daily-ex .icon-btn { width: 36px; height: 36px; color: var(--muted); }
+.daily-ex .icon-btn svg { width: 18px; height: 18px; }
+.daily-ex .fr { font-family: var(--hand); font-size: 1.25rem; color: var(--ink); line-height: 1.3; }
+.daily-ex .en { font-size: .92rem; color: var(--muted); margin-top: 2px; }
+.daily-empty { color: var(--muted); padding: 24px 0 8px; }
+.daily-actions { display: flex; gap: 10px; justify-content: center; margin-top: 22px; }
+.daily-actions .btn { min-width: 150px; padding: 0 22px; flex: none; }
+.daily-actions .btn:disabled { opacity: .6; }
+.daily-history { margin-top: 26px; }
+.daily-history h2 { font-size: .95rem; color: var(--muted); margin: 0 0 10px; }
+.daily-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.cand-chip { height: 36px; padding: 0 14px; border-radius: 18px; background: var(--chip); font-family: var(--hand); font-size: 1.15rem; }
+.cand-chip.on { background: var(--ink); color: #fff; }
 .fab {
   position: fixed; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   width: 64px; height: 64px; border-radius: 50%; background: var(--ink); color: #fff;
@@ -432,6 +463,14 @@ const Store = {
     const j = await this.call('GET', { action: 'profiles' });
     return j.profiles || DEFAULT_PROFILES;
   },
+  async getShared(key) { // items both of you share (the Daily words page)
+    if (this.mode === 'local') return LS.get('shared:' + key, null);
+    try { return (await this.call('GET', { action: 'shared', key })).value; } catch (e) { if (e.code === 401) throw e; return null; }
+  },
+  async putShared(key, value) {
+    if (this.mode === 'local') { LS.set('shared:' + key, value); return; }
+    await this.write(() => this.call('POST', { action: 'shared' }, { action: 'shared', key, value }), 'shared|' + key);
+  },
   async saveProfiles(p) {
     if (this.mode === 'local') { const d = this.local(); d.profiles = p; LS.set('local', d); return; }
     await this.write(() => this.call('POST', { action: 'profiles' }, { action: 'profiles', profiles: p }));
@@ -495,6 +534,7 @@ const S = {
   covered: false,
   query: '',
   justAdded: null,
+  daily: null, dailyShown: false, dailyView: null, dailyBusy: false, // the shared Daily words page
 };
 const prof = pid => S.profiles.find(p => p.id === pid) || DEFAULT_PROFILES[0];
 const myInk = () => LS.get('ink', null) || prof(S.me || 'p1').color;
@@ -1587,7 +1627,7 @@ const Judge = {
     const r = await fetch('https://en.wiktionary.org/api/rest_v1/page/definition/' + encodeURIComponent(word.replace(/ /g, '_')));
     if (r.status === 404) { this.defsCache.set(word, []); return []; }
     if (!r.ok) throw new Error('Wiktionary'); // busy or offline: the caller treats this as "can't tell"
-    const j = await r.json(), text = h => new DOMParser().parseFromString(h || '', 'text/html').body.textContent;
+    const j = await r.json(), text = htmlText;
     const out = (j.fr || []).flatMap(sec => (sec.definitions || []).map(d => text(d.definition)));
     this.defsCache.set(word, out);
     return out;
@@ -1686,6 +1726,14 @@ async function translatorText(text) {
   } catch (e) { return ''; }
 }
 
+// Wiktionary HTML as plain text, without the bits of page styling and footnote marks it sometimes carries
+function htmlText(html) {
+  const doc = new DOMParser().parseFromString(html || '', 'text/html');
+  doc.querySelectorAll('style, script, link, sup.reference').forEach(n => n.remove());
+  // sometimes the styling arrives as plain text (".mw-parser-output .x{…}"): drop it, and anything cut off after it
+  return doc.body.textContent.replace(/\.mw-parser-output[^{}]*\{[^}]*\}/g, '').replace(/\.mw-parser-output[\s\S]*$/, '');
+}
+
 function editDistance(a, b) { // Levenshtein: how many letters to change to turn a into b
   const d = Array.from({ length: b.length + 1 }, (_, j) => j);
   for (let i = 1; i <= a.length; i++) {
@@ -1752,6 +1800,7 @@ const app = $('#app');
 
 function go(hash) { location.hash = hash; }
 function parseRoute() {
+  if (location.hash === '#/daily') return { view: 'daily' };
   const m = location.hash.match(/^#\/(p1|p2)\/([\w-]+)$/);
   if (m) return { view: 'page', pid: m[1], pageId: m[2] };
   const t = location.hash.match(/^#\/(p1|p2)$/);
@@ -1763,11 +1812,135 @@ function render() {
   if (S.route.view === 'page') {
     if (!S.data[S.route.pid].pages[S.route.pageId]) { go('#/' + S.route.pid); return; }
     renderPage();
+  } else if (S.route.view === 'daily') {
+    renderDaily();
   } else {
     if (S.route.tab) S.tab = S.route.tab;
     renderHome();
   }
   setStatus();
+}
+
+// ---------- Daily words: one shared page for both of you, always first on the home page, never deleted ----------
+// "New word" picks a common French word (the same word appears for both of you). Its meaning stays hidden
+// until you tap "Show meaning": the English, the kind of word, how it sounds, and two short example sentences.
+const DAILY_WORDS = (
+  'maison famille ami amie travail école livre voiture ville pays monde temps jour nuit matin soir semaine mois année ' +
+  'heure moment fois vie enfant homme femme fille garçon père mère frère sœur chien chat eau pain café thé vin lait ' +
+  'fromage pomme fruit légume viande poisson repas cuisine chambre porte fenêtre table chaise lit rue route gare ' +
+  'magasin marché argent prix question réponse idée problème raison chose mot langue histoire musique film photo ' +
+  'voyage vacances plage mer montagne forêt soleil pluie neige vent ciel arbre fleur jardin couleur cœur tête main ' +
+  'pied œil bouche santé médecin hôpital travailleur bureau réunion projet ordinateur téléphone message lettre journal ' +
+  'nouvelle début fin chemin endroit côté milieu fête cadeau anniversaire souvenir rêve peur joie colère espoir ' +
+  'être avoir aller faire dire pouvoir vouloir savoir voir venir devoir prendre trouver donner parler aimer passer ' +
+  'mettre croire penser regarder chercher attendre comprendre connaître rester entendre demander répondre sentir ' +
+  'vivre partir sortir arriver entrer tomber porter ouvrir fermer commencer finir essayer oublier apprendre écrire ' +
+  'lire manger boire dormir marcher courir jouer chanter danser acheter vendre payer choisir changer aider montrer ' +
+  'rencontrer appeler habiter travailler étudier voyager nager cuisiner laver gagner perdre rire pleurer sourire ' +
+  'grand petit bon mauvais beau joli nouveau vieux jeune long court chaud froid facile difficile heureux triste ' +
+  'content fatigué malade riche pauvre propre sale rapide lent fort faible doux dur plein vide cher gratuit ' +
+  'important possible prêt sûr vrai faux simple calme drôle gentil méchant poli timide fier libre seul ' +
+  'souvent toujours jamais parfois déjà encore bientôt hier demain aujourd’hui maintenant ensuite tard tôt ' +
+  'ici là loin près dedans dehors beaucoup peu assez trop très vite bien mal ensemble surtout presque vraiment ' +
+  'pourtant cependant donc alors parce que pendant depuis avant après chez avec sans sous contre vers'
+).split(/\s+/).filter(w => w && w !== 'que' && w !== 'parce'); // ("parce que" is two words; skip it)
+
+async function wordInfo(word) { // { pos, en, sound, ipa, examples: [{ fr, en }] }, kept short
+  const info = { pos: '', en: '', sound: '', ipa: '', examples: [] };
+  const text = h => htmlText(h).replace(/\s+/g, ' ').trim();
+  const addExample = (fr, en) => {
+    if (info.examples.length >= 2 || !fr || !en || fr.length > 110 || info.examples.some(x => x.fr === fr)) return;
+    info.examples.push({ fr, en });
+  };
+  try { // the dictionary: kind of word, main meaning, and its own examples
+    const r = await fetch('https://en.wiktionary.org/api/rest_v1/page/definition/' + encodeURIComponent(word.replace(/ /g, '_')));
+    if (r.ok) {
+      const sec = ((await r.json()).fr || [])[0];
+      if (sec) {
+        info.pos = (sec.partOfSpeech || '').toLowerCase();
+        for (const d of sec.definitions || []) {
+          const g = text(d.definition).replace(/\([^)]*\)/g, ' ').split(/;/)[0].replace(/\s+/g, ' ').replace(/[.:]$/, '').trim();
+          if (!info.en && g) info.en = g.length > 60 ? g.slice(0, 58).replace(/\s+\S*$/, '') + '…' : g;
+          else if (info.en && !info.also && g && g !== info.en && g.length <= 30) info.also = g; // a second, short meaning
+          for (const ex of d.parsedExamples || []) addExample(text(ex.example), text(ex.translation));
+        }
+      }
+    }
+  } catch (e) { }
+  if (info.examples.length < 2) try { // real sentences with translations from Tatoeba
+    const r = await fetch('https://api.tatoeba.org/unstable/sentences?lang=fra&q=' + encodeURIComponent(word) + '&trans%3Alang=eng&sort=relevance&limit=20');
+    if (r.ok) {
+      for (const s of (await r.json()).data || []) {
+        const t = (s.translations || []).flat().find(x => x && x.lang === 'eng');
+        if (t && s.text.length >= 15 && s.text.length <= 90) addExample(s.text, t.text);
+      }
+    }
+  } catch (e) { }
+  if (!info.en) info.en = await translateFr(word);
+  try { const p = await Pron.pronounce(word); info.sound = p.sound; info.ipa = p.ipa; } catch (e) { }
+  return info;
+}
+
+async function newDailyWord() {
+  if (S.dailyBusy) return;
+  const d = S.daily, recent = new Set([d && d.word, ...((d && d.history) || []).map(h => h.word)].filter(Boolean));
+  let pool = DAILY_WORDS.filter(w => !recent.has(w));
+  if (!pool.length) pool = DAILY_WORDS; // gone through them all: start again
+  const word = pool[Math.floor(Math.random() * pool.length)];
+  S.dailyBusy = true; render();
+  const info = await wordInfo(word);
+  const history = [d && d.word ? { word: d.word, info: d.info, at: d.at, by: d.by } : null, ...((d && d.history) || [])].filter(Boolean).slice(0, 200);
+  S.daily = { word, info, at: Date.now(), by: S.me, history };
+  S.dailyBusy = false; S.dailyShown = false; S.dailyView = null;
+  render();
+  await Store.putShared('daily', S.daily);
+}
+
+function dailyCard() { // the pinned card on both home pages (no delete button: this page can't be deleted)
+  const d = S.daily, count = d ? (d.history || []).length + 1 : 0;
+  return `<div class="page-card" style="--c:#159a6b">
+    <button class="card" data-open-daily="1" aria-label="Open Daily words">
+      <div class="thumb daily-thumb"><b>Daily words</b><span class="big">${esc(d ? d.word : 'Tap for a word')}</span>
+        ${((d && d.history) || []).slice(0, 5).map(h => `<span>${esc(h.word)}</span>`).join('')}</div>
+      <div class="card-meta"><strong>Daily words</strong><small>Shared · ${count} ${count === 1 ? 'word' : 'words'}</small></div>
+    </button>
+  </div>`;
+}
+
+function renderDaily() {
+  document.documentElement.style.setProperty('--ink', '#159a6b');
+  const d = S.daily, view = S.dailyView ? ((d && d.history) || []).find(h => h.word === S.dailyView) : d;
+  const info = view && view.info, shown = S.dailyShown;
+  const who = view && view.by ? prof(view.by).name : '';
+  app.innerHTML = `
+    <header class="appbar">
+      <button class="icon-btn" data-act="home" aria-label="Back to all pages">${I.back}</button>
+      <h1>Daily words</h1>
+      <span class="status"></span>
+    </header>
+    <main class="desk"><div class="daily">
+      <section class="daily-card" aria-live="polite">
+        ${S.dailyView ? '<div class="daily-label">An earlier word · <button class="link" data-act="daily-today">back to today’s word</button></div>' : '<div class="daily-label">Today’s word</div>'}
+        ${view ? `
+          <div class="daily-word-row"><span class="daily-word" lang="fr">${esc(view.word)}</span>
+            <button class="icon-btn" data-act="daily-say" aria-label="Hear it">${I.speaker}</button></div>
+          ${who ? `<div class="daily-meta">${esc(who)} · ${fmtDate(view.at)}</div>` : ''}
+          ${shown && info ? `<div class="daily-meaning">
+            <div class="daily-en">${esc(info.en || '—')}</div>
+            <div class="daily-facts">${info.pos ? `<span class="chip">${esc(info.pos)}</span>` : ''}${info.also ? `<span class="chip">also: ${esc(info.also)}</span>` : ''}${info.sound ? `<span class="chip">sounds like “${esc(info.sound)}”</span>` : ''}</div>
+            ${info.examples && info.examples.length ? `<ul class="daily-ex">${info.examples.map((x, i) => `<li>
+              <button class="icon-btn" data-act="daily-say-ex" data-i="${i}" aria-label="Hear this sentence">${I.speaker}</button>
+              <div><div class="fr" lang="fr">${esc(x.fr)}</div><div class="en">${esc(x.en)}</div></div></li>`).join('')}</ul>` : ''}
+          </div>` : ''}`
+        : `<div class="daily-empty">No word yet. Tap <b>New word</b> to get the first one.</div>`}
+        <div class="daily-actions">
+          ${view ? `<button class="btn" data-act="daily-meaning">${shown ? 'Hide meaning' : 'Show meaning'}</button>` : ''}
+          <button class="btn primary" data-act="daily-new" ${S.dailyBusy ? 'disabled' : ''}>${S.dailyBusy ? 'Finding a word…' : 'New word'}</button>
+        </div>
+      </section>
+      ${d && d.history && d.history.length ? `<section class="daily-history"><h2>Earlier words</h2>
+        <div class="daily-chips">${d.history.slice(0, 40).map(h => `<button class="cand-chip ${S.dailyView === h.word ? 'on' : ''}" data-daily-past="${esc(h.word)}">${esc(h.word)}</button>`).join('')}</div></section>` : ''}
+    </div></main>`;
 }
 
 // ---------- home ----------
@@ -1793,7 +1966,7 @@ function renderHome() {
       <input class="search" type="search" placeholder="Search pages and words" value="${esc(S.query)}" aria-label="Search">
     </div>
     <main class="desk">
-      ${pages.length ? `<div class="grid">${pages.map(pg => {
+      ${`<div class="grid">${dailyCard()}${pages.map(pg => {
         const es = wordsOf(pid, pg);
         return `<div class="page-card" style="--c:${p.color}">
           ${mine ? `<button class="card-delete" data-delete-page="${pg.id}" aria-label="Delete page ${esc(pg.title || 'Untitled')}" title="Delete page">${I.trash}</button>` : ''}
@@ -1802,7 +1975,8 @@ function renderHome() {
             <div class="card-meta"><strong>${esc(pg.title || 'Untitled')}</strong><small>${fmtDate(pg.created)} · ${es.length} ${es.length === 1 ? 'line' : 'lines'}</small></div>
           </button>
         </div>`;
-      }).join('')}</div>` : `<div class="empty">${q ? `<b>Nothing matches “${esc(S.query)}”</b>Try a different word.` :
+      }).join('')}</div>`}
+      ${pages.length ? '' : `<div class="empty below">${q ? `<b>Nothing matches “${esc(S.query)}”</b>Try a different word.` :
         mine ? '<b>No pages yet</b>Tap the pen button to start your first page.' : `<b>${esc(p.name)} hasn’t written anything yet</b>Their pages will show up here as they write.`}</div>`}
     </main>
     ${mine ? `<button class="fab" data-act="newpage" aria-label="New page">${I.pen}</button>` : ''}
@@ -2083,6 +2257,8 @@ app.addEventListener('click', async ev => {
   if (t.dataset.tab) { S.tab = t.dataset.tab; S.query = ''; go('#/' + t.dataset.tab); return; }
   if (t.dataset.deletePage) { deletePage(S.tab || S.me, t.dataset.deletePage); return; }
   if (t.dataset.open) { go(`#/${S.tab || S.me}/${t.dataset.open}`); return; }
+  if (t.dataset.openDaily) { S.dailyShown = false; S.dailyView = null; go('#/daily'); return; }
+  if (t.dataset.dailyPast) { S.dailyView = t.dataset.dailyPast; S.dailyShown = false; renderDaily(); setStatus(); return; }
   if (t.dataset.ink) { setInk(t.dataset.ink); return; }
   const row = t.closest('.row');
   if (t.dataset.removeBreak !== undefined) { Sheet.removeBreak(+t.dataset.removeBreak); return; }
@@ -2098,7 +2274,16 @@ app.addEventListener('click', async ev => {
 
   switch (act) {
     case 'settings': openSettings(); break;
-    case 'home': go('#/' + pid); break;
+    case 'home': go('#/' + (pid || S.tab || S.me || 'p1')); break;
+    case 'daily-new': newDailyWord(); break;
+    case 'daily-meaning': S.dailyShown = !S.dailyShown; renderDaily(); setStatus(); break;
+    case 'daily-today': S.dailyView = null; S.dailyShown = false; renderDaily(); setStatus(); break;
+    case 'daily-say': case 'daily-say-ex': {
+      const d = S.daily, view = S.dailyView ? ((d && d.history) || []).find(h => h.word === S.dailyView) : d;
+      if (!view) break;
+      Voice.speak(act === 'daily-say' ? view.word : ((view.info && view.info.examples) || [])[+t.dataset.i]?.fr || view.word);
+      break;
+    }
     case 'newpage': {
       const pg = { id: uid(), title: '', created: Date.now(), updated: Date.now() };
       S.data[S.me].pages[pg.id] = pg; Store.put(S.me, 'page', pg); go(`#/${S.me}/${pg.id}`);
@@ -2399,7 +2584,9 @@ async function loadAll() {
       const rev = Store.mode === 'remote' ? await Store.version() : null;
       S.profiles = await Store.loadProfiles();
       const [a, b] = await Promise.all([Store.loadPerson('p1'), Store.loadPerson('p2')]);
-      S.data.p1 = a; S.data.p2 = b; Store.rev = rev;
+      S.data.p1 = a; S.data.p2 = b;
+      S.daily = await Store.getShared('daily');
+      Store.rev = rev;
       return;
     } catch (e) {
       if (e.code === 401) { askPasscode(); return; }
@@ -2415,17 +2602,19 @@ async function poll() {
   if (Store.pending || $('.scrim') || $('.pop')) return;
   const active = document.activeElement;
   if (active && active.matches('input') && app.contains(active)) return; // don't interrupt typing
-  if (Sheet.busyNow() || (window.speechSynthesis && speechSynthesis.speaking)) return;
+  if (Sheet.busyNow() || S.dailyBusy || (window.speechSynthesis && speechSynthesis.speaking)) return;
   try {
     // ask the tiny "anything changed?" question first; only download everything when the answer is yes
     const rev = await Store.version();
     if (rev != null && rev === Store.rev) return;
-    const before = JSON.stringify([S.profiles, S.data]);
+    const before = JSON.stringify([S.profiles, S.data, S.daily]), oldWord = S.daily && S.daily.word;
     S.profiles = await Store.loadProfiles();
     S.data.p1 = await Store.loadPerson('p1');
     S.data.p2 = await Store.loadPerson('p2');
+    S.daily = await Store.getShared('daily');
+    if (S.daily && S.daily.word !== oldWord) { S.dailyShown = false; S.dailyView = null; } // a new word from the other tablet
     Store.rev = rev;
-    if (JSON.stringify([S.profiles, S.data]) !== before) {
+    if (JSON.stringify([S.profiles, S.data, S.daily]) !== before) {
       const scroll = $('.desk')?.scrollTop;
       render();
       if (scroll != null && $('.desk')) $('.desk').scrollTop = scroll;

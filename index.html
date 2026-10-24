@@ -506,7 +506,7 @@ const Store = {
     const j = await this.call('GET', { action: 'profiles' });
     return j.profiles || DEFAULT_PROFILES;
   },
-  async getShared(key) { // items both of you share (the Daily words page)
+  async getShared(key) { // items kept outside the page lists (Daily words lists, home-page folders)
     if (this.mode === 'local') return LS.get('shared:' + key, null);
     try { return (await this.call('GET', { action: 'shared', key })).value; } catch (e) { if (e.code === 401) throw e; return null; }
   },
@@ -577,7 +577,7 @@ const S = {
   covered: false,
   query: '',
   justAdded: null,
-  daily: null, dwOpen: null, // the shared Daily words list, and which word's meaning card is open
+  daily: null, dwOpen: null, // each person's own Daily words list ({ p1, p2 }), and which word's meaning card is open
   folders: { p1: null, p2: null }, folderOpen: null, // home-page folders, and which one is open
 };
 const prof = pid => S.profiles.find(p => p.id === pid) || DEFAULT_PROFILES[0];
@@ -794,7 +794,7 @@ const Sheet = {
       ink.slim = 1;
       if (changed && !readonly) this.save();
     }
-    this.placeWords(); // Daily words page: put new words from the shared list on the sheet
+    this.placeWords(); // Daily words page: put new words from this person's list on the sheet
     this.grow(); this.fit();
     if (!readonly) { // lines written before the English was kept as text: read it once, so search can find it
       let n = 0;
@@ -1244,16 +1244,16 @@ const Sheet = {
     while (this.breakAt(line) != null) line++;
     return line;
   },
-  placeWords() { // put any words from the shared list that aren't on this page yet at the bottom, in order
+  placeWords() { // put any words from this person's list that aren't on this page yet at the bottom, in order
     if (this.pageId !== DAILY_ID) return [];
     const placed = this.ink.placed = this.ink.placed || {}, added = [];
-    for (const w of normalizeDaily(S.daily).words) if (placed[w.id] == null) { placed[w.id] = this.nextSlot(); added.push(w.id); }
+    for (const w of dailyOf(this.pid).words) if (placed[w.id] == null) { placed[w.id] = this.nextSlot(); added.push(w.id); }
     if (added.length) { this.grow(); this.save(); }
     return added;
   },
   stampsHTML() {
     if (this.pageId !== DAILY_ID) return '';
-    const L = this.L, words = new Map(normalizeDaily(S.daily).words.map(w => [w.id, w]));
+    const L = this.L, words = new Map(dailyOf(this.pid).words.map(w => [w.id, w]));
     return Object.entries(this.ink.placed || {}).map(([id, p]) => {
       const w = words.get(id); if (!w) return '';
       return `<div class="dw-stamp" data-dw="${id}" style="top:${p * L}px;height:${L}px">
@@ -1904,8 +1904,8 @@ function render() {
   setStatus();
 }
 
-// ---------- Daily words: one shared page for both of you, always first on the home page, never deleted ----------
-// "New word" picks a common French word (the same word appears for both of you). Its meaning stays hidden
+// ---------- Daily words: a page in each notebook, always first on the home page, never deleted ----------
+// "New word" picks a common French word for your page only: each of you has your own list. Its meaning stays hidden
 // until you tap "Show meaning": the English, the kind of word, how it sounds, and two short example sentences.
 const DAILY_WORDS = (
   'maison famille ami amie travail école livre voiture ville pays monde temps jour nuit matin soir semaine mois année ' +
@@ -1964,7 +1964,7 @@ async function wordInfo(word) { // { pos, en, sound, ipa, examples: [{ fr, en }]
   return info;
 }
 
-// The shared word list: { words: [{ id, word, info, at, by }] }, oldest first. Older saves held one word plus
+// Each person's word list: { words: [{ id, word, info, at, by }] }, oldest first. Older saves held one word plus
 // a history; they're turned into a list here.
 function normalizeDaily(d) {
   if (!d) return { words: [] };
@@ -1972,20 +1972,40 @@ function normalizeDaily(d) {
   const old = [...(d.history || []).slice().reverse(), d.word ? { word: d.word, info: d.info, at: d.at, by: d.by } : null];
   return { words: old.filter(Boolean).map((w, i) => ({ id: 'w' + (w.at || i) + '-' + i, ...w })) };
 }
-async function saveDaily() { // merge with the other tablet's list first, so two new words at once both stay
-  if (Store.mode === 'remote') {
-    const theirs = normalizeDaily(await Store.getShared('daily'));
-    const mine = new Map(S.daily.words.map(w => [w.id, w]));
-    for (const w of theirs.words) if (!mine.has(w.id)) mine.set(w.id, w);
-    S.daily = { words: [...mine.values()].sort((a, b) => (a.at || 0) - (b.at || 0)) };
+const dailyOf = pid => normalizeDaily(S.daily && S.daily[pid]); // that person's own word list
+// Load both lists. Words used to be one list for both of you; the first time, each person's list starts with the
+// old words they added plus any already sitting on their own Daily words page (so notes written next to them keep
+// their word), and from then on each list grows on its own.
+async function loadDaily() {
+  let old = null; const out = {};
+  for (const pid of ['p1', 'p2']) {
+    let d = await Store.getShared('daily-' + pid);
+    if (!d) {
+      old = old || normalizeDaily(await Store.getShared('daily'));
+      const placed = S.data[pid]?.pages[DAILY_ID]?.ink?.placed || {};
+      d = { words: old.words.filter(w => placed[w.id] != null || (w.by || pid) === pid) };
+      if (pid === S.me && d.words.length) Store.putShared('daily-' + pid, d);
+    }
+    out[pid] = normalizeDaily(d);
   }
-  await Store.putShared('daily', S.daily);
+  S.daily = out;
+}
+async function saveDaily() { // merge with what your other device saved first, so two new words at once both stay
+  const key = 'daily-' + S.me;
+  if (Store.mode === 'remote') {
+    const theirs = normalizeDaily(await Store.getShared(key));
+    const mine = new Map(dailyOf(S.me).words.map(w => [w.id, w]));
+    for (const w of theirs.words) if (!mine.has(w.id)) mine.set(w.id, w);
+    S.daily[S.me] = { words: [...mine.values()].sort((a, b) => (a.at || 0) - (b.at || 0)) };
+  }
+  await Store.putShared(key, S.daily[S.me]);
 }
 async function newDailyWord() { // any word from the list, repeats allowed; it shows at once, its meaning a moment later
   const word = DAILY_WORDS[Math.floor(Math.random() * DAILY_WORDS.length)];
   const item = { id: uid(), word, info: null, at: Date.now(), by: S.me };
-  S.daily = normalizeDaily(S.daily);
-  S.daily.words.push(item);
+  S.daily = S.daily || {};
+  S.daily[S.me] = dailyOf(S.me);
+  S.daily[S.me].words.push(item);
   S.dwOpen = null;
   Sheet.placeWords(); Sheet.marks(); // it lands on the next free line, with two lines below it to write in
   document.querySelector(`.dw-stamp[data-dw="${item.id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -2006,11 +2026,11 @@ function ensureDailyPage(pid) {
   return pages[DAILY_ID];
 }
 function dailyCard(pid) { // the pinned card (no delete button: this page can't be deleted)
-  const words = normalizeDaily(S.daily).words, n = words.length;
+  const words = dailyOf(pid).words, n = words.length;
   return `<div class="page-card" style="--c:#159a6b">
     <button class="card" data-open-daily="${pid}" aria-label="Open Daily words">
       <div class="thumb daily-thumb"><b>Daily words</b>${words.slice(-7).reverse().map((w, i) => `<span class="${i ? '' : 'big'}">${esc(w.word)}</span>`).join('') || '<span>Tap for a word</span>'}</div>
-      <div class="card-meta"><strong>Daily words</strong><small>Shared word list · ${n} ${n === 1 ? 'word' : 'words'}</small></div>
+      <div class="card-meta"><strong>Daily words</strong><small>${pid === S.me ? 'Your' : esc(prof(pid).name) + '’s'} word list · ${n} ${n === 1 ? 'word' : 'words'}</small></div>
     </button>
   </div>`;
 }
@@ -2486,7 +2506,7 @@ app.addEventListener('click', async ev => {
   if (act === 'folder-ungroup') { Folders.ungroup(S.tab || S.me, S.folderOpen); S.folderOpen = null; renderHome(); setStatus(); return; }
   if (t.dataset.openDaily) { S.dwOpen = null; go(`#/${t.dataset.openDaily}/${DAILY_ID}`); return; }
   // the Daily words list: hear a word or an example, open or close its meaning card
-  const dwWord = id => normalizeDaily(S.daily).words.find(w => w.id === id);
+  const dwWord = id => dailyOf(S.route.pid).words.find(w => w.id === id);
   if (t.dataset.dwSay) { const w = dwWord(t.dataset.dwSay); if (w) Voice.speak(w.word); return; }
   if (t.dataset.dwSayEx) { const [id, i] = t.dataset.dwSayEx.split('|'), w = dwWord(id); const x = w && w.info && w.info.examples[+i]; if (x) Voice.speak(x.fr); return; }
   if (t.dataset.dwShow) { S.dwOpen = S.dwOpen === t.dataset.dwShow ? null : t.dataset.dwShow; Sheet.marks(); return; }
@@ -2810,7 +2830,7 @@ async function loadAll() {
       S.profiles = await Store.loadProfiles();
       const [a, b] = await Promise.all([Store.loadPerson('p1'), Store.loadPerson('p2')]);
       S.data.p1 = a; S.data.p2 = b;
-      S.daily = normalizeDaily(await Store.getShared('daily'));
+      await loadDaily();
       S.folders = { p1: await Store.getShared('folders-p1'), p2: await Store.getShared('folders-p2') };
       Store.rev = rev;
       return;
@@ -2837,7 +2857,7 @@ async function poll() {
     S.profiles = await Store.loadProfiles();
     S.data.p1 = await Store.loadPerson('p1');
     S.data.p2 = await Store.loadPerson('p2');
-    S.daily = normalizeDaily(await Store.getShared('daily'));
+    await loadDaily();
     S.folders = { p1: await Store.getShared('folders-p1'), p2: await Store.getShared('folders-p2') };
     Store.rev = rev;
     if (JSON.stringify([S.profiles, S.data, S.daily, S.folders]) !== before) {

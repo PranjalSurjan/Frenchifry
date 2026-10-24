@@ -8,7 +8,7 @@
 
 const PEOPLE = ['p1', 'p2'];
 const FIELD = /^(page|entry):[\w-]+$/;
-const SHARED = /^(daily|folders-p[12])$/; // shared items: the Daily words list, and each person's home-page folders
+const SHARED = /^(daily(-p[12])?|folders-p[12])$/; // kept outside the page lists: each person's Daily words list ("daily" is the old list for both), and each person's home-page folders
 let ready = false; // tables exist and the one-time copy is done (per Worker instance)
 let copyError = null; // why the last copy from Upstash failed, shown by ?action=status
 

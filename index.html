@@ -289,14 +289,20 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 /* ---------- Daily words ---------- */
 .daily-thumb { background-color: #f4fbf7; }
 .daily-thumb .big { font-size: 1.5rem; line-height: 34px; margin-bottom: 2px; }
-.daily { max-width: 760px; margin: 0 auto; padding: 8px 0 40px; }
-.daily-card { background: var(--paper); border-radius: 22px; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 28px rgba(0,0,0,.06); padding: 28px 28px 24px; text-align: center; }
-.daily-label { font-size: .85rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-.daily-label .link { color: var(--ink); text-transform: none; letter-spacing: 0; font-weight: 600; text-decoration: underline; }
-.daily-word-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 14px 0 4px; }
-.daily-word { font-family: var(--hand); font-size: calc(3.2rem * var(--fs, 1)); color: var(--ink); line-height: 1.15; }
-.daily-meta { font-size: .8rem; color: var(--muted); }
-.daily-meaning { text-align: left; margin-top: 20px; padding-top: 18px; border-top: 1px dashed var(--hair); }
+/* the shared word list at the top of the Daily words page: one ruled line per word */
+.dw-head { height: var(--line); display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding-bottom: 8px; color: var(--muted); font-size: .85rem; }
+.dw-head .btn { height: 38px; padding: 0 18px; flex: none; }
+.dw-row { position: relative; height: var(--line); display: flex; align-items: flex-end; gap: 10px; padding-bottom: 6px; }
+.dw-n { color: var(--muted); font-size: .85rem; min-width: 2.4em; text-align: right; padding-bottom: 6px; }
+.dw-word { font-family: var(--hand); font-size: calc(1.55rem * var(--fs, 1)); color: #159a6b; line-height: 1.2; }
+.dw-row .icon-btn { width: 36px; height: 36px; color: var(--muted); }
+.dw-row .icon-btn svg { width: 18px; height: 18px; }
+.dw-show { height: 32px; padding: 0 12px; border-radius: 16px; border: 1px solid var(--hair); background: var(--chrome); color: var(--muted); font-size: .8rem; font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.dw-show svg { width: 16px; height: 16px; }
+.dw-show[aria-expanded="true"] { background: #e7f5ee; color: #0f7a54; border-color: #9fd9bf; }
+.dw-pop { position: absolute; left: 2.6em; top: calc(100% + 4px); z-index: 6; width: min(560px, calc(100vw - 140px)); background: var(--chrome); border-radius: 16px; border: 1px solid var(--hair); box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 16px 44px 14px 18px; }
+.dw-close { position: absolute; right: 4px; top: 4px; width: 40px; height: 40px; }
+.dw-loading { color: var(--muted); padding: 6px 0; }
 .daily-en { font-family: var(--hand); font-size: 1.8rem; color: var(--text); }
 .daily-facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
 .daily-facts .chip { font-size: .8rem; background: var(--chip); border-radius: 12px; padding: 4px 10px; color: var(--muted); }
@@ -306,15 +312,6 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .daily-ex .icon-btn svg { width: 18px; height: 18px; }
 .daily-ex .fr { font-family: var(--hand); font-size: 1.25rem; color: var(--ink); line-height: 1.3; }
 .daily-ex .en { font-size: .92rem; color: var(--muted); margin-top: 2px; }
-.daily-empty { color: var(--muted); padding: 24px 0 8px; }
-.daily-actions { display: flex; gap: 10px; justify-content: center; margin-top: 22px; }
-.daily-actions .btn { min-width: 150px; padding: 0 22px; flex: none; }
-.daily-actions .btn:disabled { opacity: .6; }
-.daily-history { margin-top: 26px; }
-.daily-history h2 { font-size: .95rem; color: var(--muted); margin: 0 0 10px; }
-.daily-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.cand-chip { height: 36px; padding: 0 14px; border-radius: 18px; background: var(--chip); font-family: var(--hand); font-size: 1.15rem; }
-.cand-chip.on { background: var(--ink); color: #fff; }
 .fab {
   position: fixed; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   width: 64px; height: 64px; border-radius: 50%; background: var(--ink); color: #fff;
@@ -534,7 +531,7 @@ const S = {
   covered: false,
   query: '',
   justAdded: null,
-  daily: null, dailyShown: false, dailyView: null, dailyBusy: false, // the shared Daily words page
+  daily: null, dwOpen: null, // the shared Daily words list, and which word's meaning card is open
 };
 const prof = pid => S.profiles.find(p => p.id === pid) || DEFAULT_PROFILES[0];
 const myInk = () => LS.get('ink', null) || prof(S.me || 'p1').color;
@@ -1809,11 +1806,11 @@ function parseRoute() {
 
 function render() {
   S.route = parseRoute();
+  if (S.route.view === 'daily') { go(`#/${S.me || 'p1'}/${DAILY_ID}`); return; } // the old Daily words link
   if (S.route.view === 'page') {
+    if (S.route.pageId === DAILY_ID) ensureDailyPage(S.route.pid); // everyone always has one
     if (!S.data[S.route.pid].pages[S.route.pageId]) { go('#/' + S.route.pid); return; }
     renderPage();
-  } else if (S.route.view === 'daily') {
-    renderDaily();
   } else {
     if (S.route.tab) S.tab = S.route.tab;
     renderHome();
@@ -1881,66 +1878,80 @@ async function wordInfo(word) { // { pos, en, sound, ipa, examples: [{ fr, en }]
   return info;
 }
 
-async function newDailyWord() {
-  if (S.dailyBusy) return;
-  const d = S.daily, recent = new Set([d && d.word, ...((d && d.history) || []).map(h => h.word)].filter(Boolean));
-  let pool = DAILY_WORDS.filter(w => !recent.has(w));
-  if (!pool.length) pool = DAILY_WORDS; // gone through them all: start again
-  const word = pool[Math.floor(Math.random() * pool.length)];
-  S.dailyBusy = true; render();
-  const info = await wordInfo(word);
-  const history = [d && d.word ? { word: d.word, info: d.info, at: d.at, by: d.by } : null, ...((d && d.history) || [])].filter(Boolean).slice(0, 200);
-  S.daily = { word, info, at: Date.now(), by: S.me, history };
-  S.dailyBusy = false; S.dailyShown = false; S.dailyView = null;
-  render();
+// The shared word list: { words: [{ id, word, info, at, by }] }, oldest first. Older saves held one word plus
+// a history; they're turned into a list here.
+function normalizeDaily(d) {
+  if (!d) return { words: [] };
+  if (Array.isArray(d.words)) return d;
+  const old = [...(d.history || []).slice().reverse(), d.word ? { word: d.word, info: d.info, at: d.at, by: d.by } : null];
+  return { words: old.filter(Boolean).map((w, i) => ({ id: 'w' + (w.at || i) + '-' + i, ...w })) };
+}
+async function saveDaily() { // merge with the other tablet's list first, so two new words at once both stay
+  if (Store.mode === 'remote') {
+    const theirs = normalizeDaily(await Store.getShared('daily'));
+    const mine = new Map(S.daily.words.map(w => [w.id, w]));
+    for (const w of theirs.words) if (!mine.has(w.id)) mine.set(w.id, w);
+    S.daily = { words: [...mine.values()].sort((a, b) => (a.at || 0) - (b.at || 0)) };
+  }
   await Store.putShared('daily', S.daily);
 }
+async function newDailyWord() { // any word from the list, repeats allowed; it shows at once, its meaning a moment later
+  const word = DAILY_WORDS[Math.floor(Math.random() * DAILY_WORDS.length)];
+  const item = { id: uid(), word, info: null, at: Date.now(), by: S.me };
+  S.daily = normalizeDaily(S.daily);
+  S.daily.words.push(item);
+  S.dwOpen = null;
+  renderPageBody();
+  saveDaily();
+  item.info = await wordInfo(word);
+  if (S.dwOpen === item.id) renderPageBody();
+  await saveDaily();
+}
 
-function dailyCard() { // the pinned card on both home pages (no delete button: this page can't be deleted)
-  const d = S.daily, count = d ? (d.history || []).length + 1 : 0;
+// Everyone's notebook has a "daily" page: pinned first on the home page, never deleted.
+const DAILY_ID = 'daily';
+function ensureDailyPage(pid) {
+  const pages = S.data[pid].pages;
+  if (!pages[DAILY_ID]) {
+    pages[DAILY_ID] = { id: DAILY_ID, title: 'Daily words', created: Date.now(), updated: Date.now() };
+    if (pid === S.me) Store.put(pid, 'page', pages[DAILY_ID]);
+  }
+  return pages[DAILY_ID];
+}
+function dailyCard(pid) { // the pinned card (no delete button: this page can't be deleted)
+  const words = normalizeDaily(S.daily).words, n = words.length;
   return `<div class="page-card" style="--c:#159a6b">
-    <button class="card" data-open-daily="1" aria-label="Open Daily words">
-      <div class="thumb daily-thumb"><b>Daily words</b><span class="big">${esc(d ? d.word : 'Tap for a word')}</span>
-        ${((d && d.history) || []).slice(0, 5).map(h => `<span>${esc(h.word)}</span>`).join('')}</div>
-      <div class="card-meta"><strong>Daily words</strong><small>Shared · ${count} ${count === 1 ? 'word' : 'words'}</small></div>
+    <button class="card" data-open-daily="${pid}" aria-label="Open Daily words">
+      <div class="thumb daily-thumb"><b>Daily words</b>${words.slice(-7).reverse().map((w, i) => `<span class="${i ? '' : 'big'}">${esc(w.word)}</span>`).join('') || '<span>Tap for a word</span>'}</div>
+      <div class="card-meta"><strong>Daily words</strong><small>Shared word list · ${n} ${n === 1 ? 'word' : 'words'}</small></div>
     </button>
   </div>`;
 }
-
-function renderDaily() {
-  document.documentElement.style.setProperty('--ink', '#159a6b');
-  const d = S.daily, view = S.dailyView ? ((d && d.history) || []).find(h => h.word === S.dailyView) : d;
-  const info = view && view.info, shown = S.dailyShown;
-  const who = view && view.by ? prof(view.by).name : '';
-  app.innerHTML = `
-    <header class="appbar">
-      <button class="icon-btn" data-act="home" aria-label="Back to all pages">${I.back}</button>
-      <h1>Daily words</h1>
-      <span class="status"></span>
-    </header>
-    <main class="desk"><div class="daily">
-      <section class="daily-card" aria-live="polite">
-        ${S.dailyView ? '<div class="daily-label">An earlier word · <button class="link" data-act="daily-today">back to today’s word</button></div>' : '<div class="daily-label">Today’s word</div>'}
-        ${view ? `
-          <div class="daily-word-row"><span class="daily-word" lang="fr">${esc(view.word)}</span>
-            <button class="icon-btn" data-act="daily-say" aria-label="Hear it">${I.speaker}</button></div>
-          ${who ? `<div class="daily-meta">${esc(who)} · ${fmtDate(view.at)}</div>` : ''}
-          ${shown && info ? `<div class="daily-meaning">
-            <div class="daily-en">${esc(info.en || '—')}</div>
-            <div class="daily-facts">${info.pos ? `<span class="chip">${esc(info.pos)}</span>` : ''}${info.also ? `<span class="chip">also: ${esc(info.also)}</span>` : ''}${info.sound ? `<span class="chip">sounds like “${esc(info.sound)}”</span>` : ''}</div>
-            ${info.examples && info.examples.length ? `<ul class="daily-ex">${info.examples.map((x, i) => `<li>
-              <button class="icon-btn" data-act="daily-say-ex" data-i="${i}" aria-label="Hear this sentence">${I.speaker}</button>
-              <div><div class="fr" lang="fr">${esc(x.fr)}</div><div class="en">${esc(x.en)}</div></div></li>`).join('')}</ul>` : ''}
-          </div>` : ''}`
-        : `<div class="daily-empty">No word yet. Tap <b>New word</b> to get the first one.</div>`}
-        <div class="daily-actions">
-          ${view ? `<button class="btn" data-act="daily-meaning">${shown ? 'Hide meaning' : 'Show meaning'}</button>` : ''}
-          <button class="btn primary" data-act="daily-new" ${S.dailyBusy ? 'disabled' : ''}>${S.dailyBusy ? 'Finding a word…' : 'New word'}</button>
-        </div>
-      </section>
-      ${d && d.history && d.history.length ? `<section class="daily-history"><h2>Earlier words</h2>
-        <div class="daily-chips">${d.history.slice(0, 40).map(h => `<button class="cand-chip ${S.dailyView === h.word ? 'on' : ''}" data-daily-past="${esc(h.word)}">${esc(h.word)}</button>`).join('')}</div></section>` : ''}
-    </div></main>`;
+function dailyListHTML() { // the word list at the top of the Daily words page, newest first
+  const words = normalizeDaily(S.daily).words.slice().reverse();
+  return `<section class="dw" aria-label="Daily words">
+    <div class="dw-head"><span>Shared word list · ${words.length} ${words.length === 1 ? 'word' : 'words'}</span>
+      <button class="btn primary" data-act="daily-new">New word</button></div>
+    ${words.map((w, k) => `<div class="dw-row" data-dw="${w.id}">
+      <span class="dw-n">${words.length - k}.</span>
+      <span class="dw-word" lang="fr">${esc(w.word)}</span>
+      <button class="icon-btn" data-dw-say="${w.id}" aria-label="Hear it">${I.speaker}</button>
+      <button class="dw-show" data-dw-show="${w.id}" aria-expanded="${S.dwOpen === w.id}">${I.eye}meaning</button>
+      ${S.dwOpen === w.id ? dwPopHTML(w) : ''}
+    </div>`).join('')}
+  </section>`;
+}
+function dwPopHTML(w) { // the meaning card, over the page so the ruled lines below don't move
+  const info = w.info;
+  return `<div class="dw-pop" role="dialog" aria-label="Meaning of ${esc(w.word)}">
+    <button class="icon-btn dw-close" data-dw-close="1" aria-label="Close">✕</button>
+    ${!info ? '<div class="dw-loading">Looking up the meaning…</div>' : `
+      <div class="daily-en">${esc(info.en || '—')}</div>
+      <div class="daily-facts">${info.pos ? `<span class="chip">${esc(info.pos)}</span>` : ''}${info.also ? `<span class="chip">also: ${esc(info.also)}</span>` : ''}${info.sound ? `<span class="chip">sounds like “${esc(info.sound)}”</span>` : ''}</div>
+      ${info.examples && info.examples.length ? `<ul class="daily-ex">${info.examples.map((x, i) => `<li>
+        <button class="icon-btn" data-dw-say-ex="${w.id}|${i}" aria-label="Hear this sentence">${I.speaker}</button>
+        <div><div class="fr" lang="fr">${esc(x.fr)}</div><div class="en">${esc(x.en)}</div></div></li>`).join('')}</ul>` : ''}`}
+  </div>`;
 }
 
 // ---------- home ----------
@@ -1949,7 +1960,7 @@ function renderHome() {
   const p = prof(pid);
   document.documentElement.style.setProperty('--ink', p.color);
   const q = S.query.trim().toLowerCase();
-  const pages = pagesOf(pid).filter(pg => !q || (pg.title || '').toLowerCase().includes(q) ||
+  const pages = pagesOf(pid).filter(pg => pg.id !== DAILY_ID).filter(pg => !q || (pg.title || '').toLowerCase().includes(q) ||
     wordsOf(pid, pg).some(e => (e.fr + ' ' + (e.en || '')).toLowerCase().includes(q)));
 
   app.innerHTML = `
@@ -1966,7 +1977,7 @@ function renderHome() {
       <input class="search" type="search" placeholder="Search pages and words" value="${esc(S.query)}" aria-label="Search">
     </div>
     <main class="desk">
-      ${`<div class="grid">${dailyCard()}${pages.map(pg => {
+      ${`<div class="grid">${dailyCard(pid)}${pages.map(pg => {
         const es = wordsOf(pid, pg);
         return `<div class="page-card" style="--c:${p.color}">
           ${mine ? `<button class="card-delete" data-delete-page="${pg.id}" aria-label="Delete page ${esc(pg.title || 'Untitled')}" title="Delete page">${I.trash}</button>` : ''}
@@ -2207,10 +2218,12 @@ function renderPageBody() {
   }
   body.innerHTML = `
     <div class="page-head">
-      ${mine ? `<input class="page-title" value="${esc(page.title)}" placeholder="Title, e.g. CD1 – (4)" aria-label="Page title">`
-             : `<div class="page-title">${esc(page.title || 'Untitled')}</div>`}
+      ${pageId === DAILY_ID ? '<div class="page-title">Daily words</div>' // a fixed title: this page belongs to both of you
+        : mine ? `<input class="page-title" value="${esc(page.title)}" placeholder="Title, e.g. CD1 – (4)" aria-label="Page title">`
+        : `<div class="page-title">${esc(page.title || 'Untitled')}</div>`}
       <div class="page-date">(${fmtDate(page.created)})</div>
     </div>
+    ${pageId === DAILY_ID ? dailyListHTML() : ''}
     ${es.map(e => rowHTML(e, mine)).join('')}
   `;
   S.justAdded = null;
@@ -2257,8 +2270,13 @@ app.addEventListener('click', async ev => {
   if (t.dataset.tab) { S.tab = t.dataset.tab; S.query = ''; go('#/' + t.dataset.tab); return; }
   if (t.dataset.deletePage) { deletePage(S.tab || S.me, t.dataset.deletePage); return; }
   if (t.dataset.open) { go(`#/${S.tab || S.me}/${t.dataset.open}`); return; }
-  if (t.dataset.openDaily) { S.dailyShown = false; S.dailyView = null; go('#/daily'); return; }
-  if (t.dataset.dailyPast) { S.dailyView = t.dataset.dailyPast; S.dailyShown = false; renderDaily(); setStatus(); return; }
+  if (t.dataset.openDaily) { S.dwOpen = null; go(`#/${t.dataset.openDaily}/${DAILY_ID}`); return; }
+  // the Daily words list: hear a word or an example, open or close its meaning card
+  const dwWord = id => normalizeDaily(S.daily).words.find(w => w.id === id);
+  if (t.dataset.dwSay) { const w = dwWord(t.dataset.dwSay); if (w) Voice.speak(w.word); return; }
+  if (t.dataset.dwSayEx) { const [id, i] = t.dataset.dwSayEx.split('|'), w = dwWord(id); const x = w && w.info && w.info.examples[+i]; if (x) Voice.speak(x.fr); return; }
+  if (t.dataset.dwShow) { S.dwOpen = S.dwOpen === t.dataset.dwShow ? null : t.dataset.dwShow; renderPageBody(); return; }
+  if (t.dataset.dwClose) { S.dwOpen = null; renderPageBody(); return; }
   if (t.dataset.ink) { setInk(t.dataset.ink); return; }
   const row = t.closest('.row');
   if (t.dataset.removeBreak !== undefined) { Sheet.removeBreak(+t.dataset.removeBreak); return; }
@@ -2276,14 +2294,6 @@ app.addEventListener('click', async ev => {
     case 'settings': openSettings(); break;
     case 'home': go('#/' + (pid || S.tab || S.me || 'p1')); break;
     case 'daily-new': newDailyWord(); break;
-    case 'daily-meaning': S.dailyShown = !S.dailyShown; renderDaily(); setStatus(); break;
-    case 'daily-today': S.dailyView = null; S.dailyShown = false; renderDaily(); setStatus(); break;
-    case 'daily-say': case 'daily-say-ex': {
-      const d = S.daily, view = S.dailyView ? ((d && d.history) || []).find(h => h.word === S.dailyView) : d;
-      if (!view) break;
-      Voice.speak(act === 'daily-say' ? view.word : ((view.info && view.info.examples) || [])[+t.dataset.i]?.fr || view.word);
-      break;
-    }
     case 'newpage': {
       const pg = { id: uid(), title: '', created: Date.now(), updated: Date.now() };
       S.data[S.me].pages[pg.id] = pg; Store.put(S.me, 'page', pg); go(`#/${S.me}/${pg.id}`);
@@ -2428,11 +2438,11 @@ function rowMenu(id, anchor) {
 function pageMenu(anchor) {
   const { pid, pageId } = S.route, mine = pid === S.me;
   const items = [{ label: 'Settings', run: openSettings }];
-  if (mine) items.push({ label: 'Delete page', danger: true, run: () => deletePage(pid, pageId, true) });
+  if (mine && pageId !== DAILY_ID) items.push({ label: 'Delete page', danger: true, run: () => deletePage(pid, pageId, true) }); // Daily words can't be deleted
   popover(anchor, items);
 }
 function deletePage(pid, pageId, returnHome = false) {
-  const page = S.data[pid].pages[pageId]; if (!page) return;
+  const page = S.data[pid].pages[pageId]; if (!page || pageId === DAILY_ID) return; // Daily words is never deleted
   const es = entriesOf(pid, pageId), n = wordsOf(pid, page).length;
   if (!confirm(`Delete “${page.title || 'Untitled'}” and its ${n} ${n === 1 ? 'word' : 'words'}? This can’t be undone.`)) return;
   delete S.data[pid].pages[pageId]; es.forEach(e => delete S.data[pid].entries[e.id]);
@@ -2585,7 +2595,7 @@ async function loadAll() {
       S.profiles = await Store.loadProfiles();
       const [a, b] = await Promise.all([Store.loadPerson('p1'), Store.loadPerson('p2')]);
       S.data.p1 = a; S.data.p2 = b;
-      S.daily = await Store.getShared('daily');
+      S.daily = normalizeDaily(await Store.getShared('daily'));
       Store.rev = rev;
       return;
     } catch (e) {
@@ -2602,17 +2612,16 @@ async function poll() {
   if (Store.pending || $('.scrim') || $('.pop')) return;
   const active = document.activeElement;
   if (active && active.matches('input') && app.contains(active)) return; // don't interrupt typing
-  if (Sheet.busyNow() || S.dailyBusy || (window.speechSynthesis && speechSynthesis.speaking)) return;
+  if (Sheet.busyNow() || (window.speechSynthesis && speechSynthesis.speaking)) return;
   try {
     // ask the tiny "anything changed?" question first; only download everything when the answer is yes
     const rev = await Store.version();
     if (rev != null && rev === Store.rev) return;
-    const before = JSON.stringify([S.profiles, S.data, S.daily]), oldWord = S.daily && S.daily.word;
+    const before = JSON.stringify([S.profiles, S.data, S.daily]);
     S.profiles = await Store.loadProfiles();
     S.data.p1 = await Store.loadPerson('p1');
     S.data.p2 = await Store.loadPerson('p2');
-    S.daily = await Store.getShared('daily');
-    if (S.daily && S.daily.word !== oldWord) { S.dailyShown = false; S.dailyView = null; } // a new word from the other tablet
+    S.daily = normalizeDaily(await Store.getShared('daily'));
     Store.rev = rev;
     if (JSON.stringify([S.profiles, S.data, S.daily]) !== before) {
       const scroll = $('.desk')?.scrollTop;

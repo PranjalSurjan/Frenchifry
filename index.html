@@ -286,6 +286,32 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .empty b { display: block; color: var(--text); font-size: 1.15rem; margin-bottom: 4px; }
 .empty.below { margin-top: 6vh; }
 
+/* ---------- home-page folders, like app folders on a phone ---------- */
+.page-card, .page-card .card { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.folder-thumb { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 8px; padding: 12px; background: #eef0f5; background-image: none; }
+.folder-thumb::before { display: none; }
+.folder-thumb .mini { display: flex; align-items: flex-start; padding: 8px 6px; border-radius: 8px; background-color: var(--paper);
+  background-image: linear-gradient(to bottom, transparent 13px, var(--rule) 13px); background-size: 100% 14px; background-position: 0 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow: hidden; }
+.folder-thumb .mini b { font-size: .8rem; line-height: 1.2; white-space: normal; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.folder-scrim { position: fixed; inset: 0; z-index: 30; background: rgba(20,22,28,.35); backdrop-filter: blur(3px); display: grid; place-items: center; padding: 24px; }
+.folder-panel { width: min(900px, 100%); max-height: 86vh; overflow: auto; background: var(--chrome); border-radius: 26px; padding: 18px 22px 22px; box-shadow: 0 20px 60px rgba(0,0,0,.3); transition: box-shadow .15s; }
+.folder-panel header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.folder-panel header h2, .folder-name { flex: 1; min-width: 0; margin: 0; font-size: 1.3rem; font-weight: 700; border: 0; background: transparent; padding: 6px 4px; border-radius: 8px; }
+.folder-name:focus { background: var(--chip); outline: none; }
+.folder-panel header .btn { flex: none; padding: 0 16px; height: 40px; }
+.folder-hint { color: var(--muted); font-size: .85rem; margin: 14px 0 0; text-align: center; }
+.folder-panel.drop-out { box-shadow: 0 0 0 4px rgba(47,111,228,.6), 0 20px 60px rgba(0,0,0,.3); }
+/* dragging a page: it lifts under your finger, the others wiggle, and the drop target glows */
+.drag-ghost { position: fixed; z-index: 60; pointer-events: none; transform: scale(1.06) rotate(-2deg); opacity: .92; filter: drop-shadow(0 14px 22px rgba(0,0,0,.28)); }
+.page-card.dragging { opacity: .3; }
+.page-card.drop-on .thumb { box-shadow: 0 0 0 4px var(--c, var(--ink)), 0 8px 24px rgba(0,0,0,.15); transform: scale(1.04); transition: transform .12s; }
+@media (prefers-reduced-motion: no-preference) {
+  .grid.jiggle .page-card:not(.dragging) .thumb { animation: jiggle .28s ease-in-out infinite alternate; }
+  .grid.jiggle .page-card:nth-child(2n) .thumb { animation-delay: -.14s; }
+  @keyframes jiggle { from { transform: rotate(-1.2deg); } to { transform: rotate(1.2deg); } }
+}
+
 /* ---------- Daily words ---------- */
 .daily-thumb { background-color: #f4fbf7; }
 .daily-thumb .big { font-size: 1.5rem; line-height: 34px; margin-bottom: 2px; }
@@ -531,6 +557,7 @@ const S = {
   query: '',
   justAdded: null,
   daily: null, dwOpen: null, // the shared Daily words list, and which word's meaning card is open
+  folders: { p1: null, p2: null }, folderOpen: null, // home-page folders, and which one is open
 };
 const prof = pid => S.profiles.find(p => p.id === pid) || DEFAULT_PROFILES[0];
 const myInk = () => LS.get('ink', null) || prof(S.me || 'p1').color;
@@ -1986,6 +2013,10 @@ function renderHome() {
   const q = S.query.trim().toLowerCase();
   const pages = pagesOf(pid).filter(pg => pg.id !== DAILY_ID).filter(pg => !q || (pg.title || '').toLowerCase().includes(q) ||
     wordsOf(pid, pg).some(e => (e.fr + ' ' + (e.en || '')).toLowerCase().includes(q)));
+  // folders (newest first), then pages that aren't in one; while searching, every matching page shows on its own
+  const folders = q ? [] : Folders.of(pid).sort((a, b) => (b.created || 0) - (a.created || 0));
+  const inFolder = new Set(folders.flatMap(f => f.pages)), loose = pages.filter(pg => !inFolder.has(pg.id));
+  const open = !q && S.folderOpen && Folders.of(pid).find(f => f.id === S.folderOpen); // searching shows every match, not an open folder
 
   app.innerHTML = `
     <header class="appbar">
@@ -2001,24 +2032,154 @@ function renderHome() {
       <input class="search" type="search" placeholder="Search pages and words" value="${esc(S.query)}" aria-label="Search">
     </div>
     <main class="desk">
-      ${`<div class="grid">${dailyCard(pid)}${pages.map(pg => {
-        const es = wordsOf(pid, pg);
-        return `<div class="page-card" style="--c:${p.color}">
-          ${mine ? `<button class="card-delete" data-delete-page="${pg.id}" aria-label="Delete page ${esc(pg.title || 'Untitled')}" title="Delete page">${I.trash}</button>` : ''}
-          <button class="card" data-open="${pg.id}">
-            <div class="thumb"><b>${esc(pg.title || 'Untitled')}</b>${es.slice(0, 7).map(e => `<span style="color:${e.color || p.color}">${esc(e.fr)}</span>`).join('')}</div>
-            <div class="card-meta"><strong>${esc(pg.title || 'Untitled')}</strong><small>${fmtDate(pg.created)} · ${es.length} ${es.length === 1 ? 'line' : 'lines'}</small></div>
-          </button>
-        </div>`;
-      }).join('')}</div>`}
+      ${`<div class="grid">${dailyCard(pid)}${folders.map(f => folderCard(pid, f)).join('')}${loose.map(pg => pageCard(pid, pg, mine)).join('')}</div>`}
       ${pages.length ? '' : `<div class="empty below">${q ? `<b>Nothing matches “${esc(S.query)}”</b>Try a different word.` :
         mine ? '<b>No pages yet</b>Tap the pen button to start your first page.' : `<b>${esc(p.name)} hasn’t written anything yet</b>Their pages will show up here as they write.`}</div>`}
     </main>
     ${mine ? `<button class="fab" data-act="newpage" aria-label="New page">${I.pen}</button>` : ''}
+    ${open ? folderPanel(pid, open, mine) : ''}
   `;
   const s = $('.search');
   s.addEventListener('input', () => { S.query = s.value; const pos = s.selectionStart; renderHome(); setStatus(); const n = $('.search'); n.focus(); n.setSelectionRange(pos, pos); });
+  if (mine) { HomeDrag.attach($('.desk'), pid); HomeDrag.attach($('.folder-panel'), pid); }
+  const name = $('.folder-name'); if (name) name.addEventListener('change', () => Folders.rename(pid, open.id, name.value));
 }
+
+function pageCard(pid, pg, mine) { // a page on the home page (or inside a folder)
+  const p = prof(pid), es = wordsOf(pid, pg);
+  return `<div class="page-card" data-page="${pg.id}" style="--c:${p.color}">
+    ${mine ? `<button class="card-delete" data-delete-page="${pg.id}" aria-label="Delete page ${esc(pg.title || 'Untitled')}" title="Delete page">${I.trash}</button>` : ''}
+    <button class="card" data-open="${pg.id}">
+      <div class="thumb"><b>${esc(pg.title || 'Untitled')}</b>${es.slice(0, 7).map(e => `<span style="color:${e.color || p.color}">${esc(e.fr)}</span>`).join('')}</div>
+      <div class="card-meta"><strong>${esc(pg.title || 'Untitled')}</strong><small>${fmtDate(pg.created)} · ${es.length} ${es.length === 1 ? 'line' : 'lines'}</small></div>
+    </button>
+  </div>`;
+}
+function folderCard(pid, f) { // like a folder of apps on a phone: little tiles of the pages inside
+  const pages = S.data[pid].pages;
+  return `<div class="page-card folder-card" data-folder="${f.id}" style="--c:${prof(pid).color}">
+    <button class="card" data-open-folder="${f.id}" aria-label="Open folder ${esc(f.name)}">
+      <div class="thumb folder-thumb">${f.pages.slice(0, 4).map(id => `<span class="mini"><b>${esc((pages[id] && pages[id].title) || 'Untitled')}</b></span>`).join('')}</div>
+      <div class="card-meta"><strong>${esc(f.name)}</strong><small>Folder · ${f.pages.length} ${f.pages.length === 1 ? 'page' : 'pages'}</small></div>
+    </button>
+  </div>`;
+}
+function folderPanel(pid, f, mine) { // an open folder, over the home page
+  const pages = f.pages.map(id => S.data[pid].pages[id]).filter(Boolean);
+  return `<div class="folder-scrim" data-close-folder="1">
+    <section class="folder-panel" role="dialog" aria-label="Folder ${esc(f.name)}">
+      <header>
+        ${mine ? `<input class="folder-name" value="${esc(f.name)}" aria-label="Folder name" autocomplete="off" spellcheck="false">` : `<h2>${esc(f.name)}</h2>`}
+        ${mine ? '<button class="btn" data-act="folder-ungroup">Ungroup</button>' : ''}
+        <button class="icon-btn" data-close-folder="1" aria-label="Close folder">✕</button>
+      </header>
+      <div class="grid">${pages.map(pg => pageCard(pid, pg, mine)).join('')}</div>
+      ${mine ? '<p class="folder-hint">Press and hold a page, then drag it out of this box to take it out of the folder.</p>' : ''}
+    </section>
+  </div>`;
+}
+
+// ---------- folders on the home page, like app folders on a phone ----------
+// Each person's folders: { list: [{ id, name, pages: [pageId…], created }] }, stored as a shared item
+// ("folders-p1" / "folders-p2") so moving a page never re-uploads the page itself.
+const Folders = {
+  of(pid) { // the folders, without pages that no longer exist; empty folders disappear
+    const pages = S.data[pid].pages;
+    return ((S.folders[pid] && S.folders[pid].list) || [])
+      .map(f => ({ ...f, pages: f.pages.filter(id => pages[id] && id !== DAILY_ID) })).filter(f => f.pages.length);
+  },
+  set(pid, list) { S.folders[pid] = { list: list.filter(f => f.pages.length) }; Store.putShared('folders-' + pid, S.folders[pid]); },
+  nextName(pid) {
+    const names = new Set(this.of(pid).map(f => f.name));
+    let n = 1; while (names.has(n === 1 ? 'Folder' : `Folder ${n}`)) n++;
+    return n === 1 ? 'Folder' : `Folder ${n}`;
+  },
+  drop(pid, pageId, target) { // dropped a page on another page (a new folder) or on a folder (added to it)
+    const list = this.of(pid).map(f => ({ ...f, pages: f.pages.filter(x => x !== pageId) }));
+    const into = target.folder && list.find(f => f.id === target.folder);
+    if (into) into.pages.push(pageId);
+    else if (target.page && target.page !== pageId) {
+      list.forEach(f => { f.pages = f.pages.filter(x => x !== target.page); });
+      list.push({ id: uid(), name: this.nextName(pid), pages: [target.page, pageId], created: Date.now() });
+    }
+    this.set(pid, list);
+  },
+  takeOut(pid, pageId) { this.set(pid, this.of(pid).map(f => ({ ...f, pages: f.pages.filter(x => x !== pageId) }))); },
+  ungroup(pid, folderId) { this.set(pid, this.of(pid).filter(f => f.id !== folderId)); },
+  rename(pid, folderId, name) {
+    name = name.trim() || this.nextName(pid);
+    this.set(pid, this.of(pid).map(f => f.id === folderId ? { ...f, name } : f));
+  },
+};
+
+// Press and hold a page card (cards wiggle), then drag it onto another page or a folder; drag it out of an
+// open folder to take it out. A quick tap still opens the page and a swipe still scrolls.
+const HomeDrag = {
+  press: null, drag: null, noClickUntil: 0,
+  attach(el, pid) {
+    if (!el) return;
+    el.addEventListener('pointerdown', e => this.down(e, pid));
+    el.addEventListener('pointermove', e => this.move(e));
+    el.addEventListener('pointerup', e => this.up(e, pid));
+    el.addEventListener('pointercancel', () => this.cancel());
+    el.addEventListener('touchmove', e => { if (this.drag) e.preventDefault(); }, { passive: false }); // no scrolling mid-drag
+    el.addEventListener('contextmenu', e => { if (this.press || this.drag) e.preventDefault(); });
+  },
+  down(e, pid) {
+    const card = e.target.closest('.page-card[data-page]');
+    if (!card || e.target.closest('.card-delete') || this.drag) return;
+    const p = this.press = { pid, card, id: e.pointerId, x: e.clientX, y: e.clientY };
+    p.timer = setTimeout(() => this.start(), 450);
+  },
+  start() {
+    const p = this.press; if (!p) return;
+    const r = p.card.getBoundingClientRect(), ghost = p.card.cloneNode(true);
+    ghost.classList.add('drag-ghost');
+    Object.assign(ghost.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px' });
+    document.body.appendChild(ghost);
+    this.drag = { pid: p.pid, pageId: p.card.dataset.page, ghost, dx: p.x - r.left, dy: p.y - r.top,
+      fromFolder: !!p.card.closest('.folder-panel'), card: p.card, target: null, out: false };
+    p.card.classList.add('dragging');
+    document.querySelectorAll('.grid').forEach(g => g.classList.add('jiggle'));
+    try { p.card.setPointerCapture(p.id); } catch (err) { }
+    if (navigator.vibrate) navigator.vibrate(12);
+  },
+  move(e) {
+    const p = this.press, d = this.drag;
+    if (p && !d) { if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 10) this.cancel(); return; } // it's a scroll
+    if (!d) return;
+    e.preventDefault();
+    d.ghost.style.left = e.clientX - d.dx + 'px'; d.ghost.style.top = e.clientY - d.dy + 'px';
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const panel = document.querySelector('.folder-panel');
+    d.out = d.fromFolder && panel && !panel.contains(under); // dragged out of the open folder
+    const t = !d.out && under && under.closest('.page-card[data-page], .page-card[data-folder]');
+    const ok = t && t !== d.card && !(d.fromFolder && panel && panel.contains(t)) ? t : null;
+    if (d.target !== ok) { if (d.target) d.target.classList.remove('drop-on'); if (ok) ok.classList.add('drop-on'); d.target = ok; }
+    if (panel) panel.classList.toggle('drop-out', d.out);
+  },
+  up(e, pid) {
+    const d = this.drag;
+    clearTimeout(this.press && this.press.timer); this.press = null;
+    if (!d) return;
+    this.noClickUntil = performance.now() + 450; // releasing isn't a tap on the card
+    const t = d.target;
+    this.finish();
+    if (d.out) Folders.takeOut(pid, d.pageId);
+    else if (t) Folders.drop(pid, d.pageId, { page: t.dataset.page, folder: t.dataset.folder });
+    else return;
+    if (d.out && !Folders.of(pid).some(f => f.id === S.folderOpen)) S.folderOpen = null; // the folder emptied out
+    renderHome(); setStatus();
+  },
+  cancel() { clearTimeout(this.press && this.press.timer); this.press = null; if (this.drag) this.finish(); },
+  finish() {
+    const d = this.drag; this.drag = null; if (!d) return;
+    d.ghost.remove(); d.card.classList.remove('dragging');
+    if (d.target) d.target.classList.remove('drop-on');
+    document.querySelectorAll('.grid.jiggle').forEach(g => g.classList.remove('jiggle'));
+    document.querySelector('.folder-panel')?.classList.remove('drop-out');
+  },
+};
 
 // ---------- search inside a page: French or English, handwritten or typed ----------
 const Find = {
@@ -2285,15 +2446,20 @@ function scrollToEnd() { const d = $('.desk'); if (d) d.scrollTo({ top: d.scroll
 app.addEventListener('click', async ev => {
   const enCell = ev.target.closest('.cell.en');
   if (enCell && $('.paper.covered') && !enCell.classList.contains('revealed')) { ev.preventDefault(); enCell.classList.add('revealed'); return; }
+  if (performance.now() < HomeDrag.noClickUntil) { ev.preventDefault(); return; } // letting go after dragging a page
+  if (ev.target.classList && ev.target.classList.contains('folder-scrim')) { S.folderOpen = null; renderHome(); setStatus(); return; } // tap outside an open folder
   if (ev.target.closest('input')) return;
   const t = ev.target.closest('button, [data-speak], [data-edit-fr]');
   if (!t) return;
   const act = t.dataset.act;
   const { pid, pageId } = S.route;
 
-  if (t.dataset.tab) { S.tab = t.dataset.tab; S.query = ''; go('#/' + t.dataset.tab); return; }
+  if (t.dataset.tab) { S.tab = t.dataset.tab; S.query = ''; S.folderOpen = null; go('#/' + t.dataset.tab); return; }
   if (t.dataset.deletePage) { deletePage(S.tab || S.me, t.dataset.deletePage); return; }
-  if (t.dataset.open) { go(`#/${S.tab || S.me}/${t.dataset.open}`); return; }
+  if (t.dataset.open) { S.folderOpen = null; go(`#/${S.tab || S.me}/${t.dataset.open}`); return; }
+  if (t.dataset.openFolder) { S.folderOpen = t.dataset.openFolder; renderHome(); setStatus(); return; }
+  if (t.dataset.closeFolder) { S.folderOpen = null; renderHome(); setStatus(); return; }
+  if (act === 'folder-ungroup') { Folders.ungroup(S.tab || S.me, S.folderOpen); S.folderOpen = null; renderHome(); setStatus(); return; }
   if (t.dataset.openDaily) { S.dwOpen = null; go(`#/${t.dataset.openDaily}/${DAILY_ID}`); return; }
   // the Daily words list: hear a word or an example, open or close its meaning card
   const dwWord = id => normalizeDaily(S.daily).words.find(w => w.id === id);
@@ -2620,6 +2786,7 @@ async function loadAll() {
       const [a, b] = await Promise.all([Store.loadPerson('p1'), Store.loadPerson('p2')]);
       S.data.p1 = a; S.data.p2 = b;
       S.daily = normalizeDaily(await Store.getShared('daily'));
+      S.folders = { p1: await Store.getShared('folders-p1'), p2: await Store.getShared('folders-p2') };
       Store.rev = rev;
       return;
     } catch (e) {
@@ -2641,13 +2808,14 @@ async function poll() {
     // ask the tiny "anything changed?" question first; only download everything when the answer is yes
     const rev = await Store.version();
     if (rev != null && rev === Store.rev) return;
-    const before = JSON.stringify([S.profiles, S.data, S.daily]);
+    const before = JSON.stringify([S.profiles, S.data, S.daily, S.folders]);
     S.profiles = await Store.loadProfiles();
     S.data.p1 = await Store.loadPerson('p1');
     S.data.p2 = await Store.loadPerson('p2');
     S.daily = normalizeDaily(await Store.getShared('daily'));
+    S.folders = { p1: await Store.getShared('folders-p1'), p2: await Store.getShared('folders-p2') };
     Store.rev = rev;
-    if (JSON.stringify([S.profiles, S.data, S.daily]) !== before) {
+    if (JSON.stringify([S.profiles, S.data, S.daily, S.folders]) !== before) {
       const scroll = $('.desk')?.scrollTop;
       render();
       if (scroll != null && $('.desk')) $('.desk').scrollTop = scroll;

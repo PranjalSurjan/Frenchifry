@@ -124,6 +124,10 @@ Cloudflare's free plan never bills you; going over a limit would only pause savi
   highlights every match in yellow and jumps to it. Use **‹ ›** (or Enter) to go through the matches.
 - **Eye button** blurs the English, typed or handwritten, so you can test yourself.
 - **⋮ on a typed line** lets you edit the French, fix the pronunciation, look it up again, or delete the line.
+- **Folders** on the home page, like app folders on a phone: **press and hold** a page until the cards wiggle, then drag it
+  onto another page to make a folder (or onto a folder to add it). Tap a folder to open it: rename it at the top, open
+  pages, drag a page out of the box to take it out, or **Ungroup** to put everything back. Search still finds pages
+  inside folders. Daily words always stays pinned first.
 - **Trash button on one of your home-page cards** deletes that page and all its lines after confirmation.
 - Your friend's pages are on their tab at the top, read only.
 - **Daily words** is a notebook page pinned first on both home pages; it can't be deleted. You write on it like any

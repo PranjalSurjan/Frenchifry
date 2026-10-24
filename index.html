@@ -104,7 +104,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .desk { flex: 1; overflow: auto; padding: 24px 16px 40px; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
 .desk.page-desk { padding: 0; } /* a notebook page fills the screen edge to edge */
 .paper {
-  --pad-l: 96px; --pad-r: 28px; --fs: 1; /* --fs: text size chosen with the Aa button */
+  --pad-l: 72px; --pad-r: 16px; --fs: 1; /* --fs: text size chosen with the Aa button */
   position: relative; margin: 0 auto; min-height: 100%;
   display: flex; flex-direction: column;
   background-color: var(--paper);
@@ -116,7 +116,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 }
 .paper-body { flex: none; }
 .paper::before { /* double red margin, like a real notebook */
-  content: ''; position: absolute; top: 0; bottom: 0; left: 64px; width: 5px;
+  content: ''; position: absolute; top: 0; bottom: 0; left: 50px; width: 5px;
   border-left: 1.5px solid var(--margin); border-right: 1.5px solid var(--margin);
 }
 .page-head { height: calc(var(--line) * 2); display: flex; align-items: flex-end; gap: 24px; padding-bottom: 10px; position: relative; }
@@ -379,8 +379,8 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 
 @media (max-width: 720px) {
   :root { --line: 48px; }
-  .paper { --pad-l: 64px; --pad-r: 14px; }
-  .paper::before { left: 40px; }
+  .paper { --pad-l: 52px; --pad-r: 10px; }
+  .paper::before { left: 32px; }
   .row { grid-template-columns: minmax(0,1fr) 20px minmax(0,1fr) 40px 32px; column-gap: 8px; }
   .row.readonly { grid-template-columns: minmax(0,1fr) 20px minmax(0,1fr) 40px; }
   .cell { font-size: calc(1.3rem * var(--fs, 1)); }
@@ -404,6 +404,8 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 // ======================================================================
 const I = {
   back: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
+  expand: '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>',
+  shrink: '<svg viewBox="0 0 24 24"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/></svg>',
   pen: '<svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4z"/><path d="M14 6l3 3"/></svg>',
   keyboard: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>',
   undo: '<svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 010 12"/></svg>',
@@ -456,6 +458,25 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/[^\w-]/g, '');
 const fmtDate = t => new Date(t).toLocaleDateString('en-CA', { month: 'long', day: 'numeric', year: 'numeric' });
 const $ = (s, el = document) => el.querySelector(s);
+
+// Full screen: hides the browser bar and the tablet's status and navigation bars, so the page gets the whole screen.
+// The button stays in the top bar, so the same button turns it off again.
+const FullScreen = {
+  get able() { const el = document.documentElement; return !!(el.requestFullscreen || el.webkitRequestFullscreen); },
+  get on() { return !!(document.fullscreenElement || document.webkitFullscreenElement); },
+  button() {
+    if (!this.able) return '';
+    const label = this.on ? 'Exit full screen' : 'Full screen';
+    return `<button class="icon-btn" data-act="fullscreen" aria-pressed="${this.on}" aria-label="${label}" title="${label}">${this.on ? I.shrink : I.expand}</button>`;
+  },
+  toggle() {
+    const d = document, el = d.documentElement;
+    const done = this.on ? (d.exitFullscreen || d.webkitExitFullscreen).call(d) : (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' });
+    Promise.resolve(done).catch(() => toast("Full screen isn't available here"));
+  },
+  sync() { document.querySelectorAll('[data-act="fullscreen"]').forEach(b => { b.outerHTML = this.button(); }); },
+};
+for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => FullScreen.sync());
 
 // ======================================================================
 // Storage: Vercel API (synced) or this device only
@@ -763,7 +784,7 @@ const Sheet = {
     if (!ink.xw) {
       // Pages written before the page went full width measured x against the old, narrower page:
       // pin that width so existing writing keeps its size and place.
-      const ps = getComputedStyle(el.parentElement), pads = parseFloat(ps.paddingLeft) + parseFloat(ps.paddingRight);
+      const pads = innerWidth <= 720 ? 78 : 124; // the side margins pages had back then
       ink.xw = ink.strokes.length && desk ? Math.round(Math.min(1180, desk.clientWidth - 32) - pads) : Math.round(this.W);
       if (ink.strokes.length && !readonly) this.save();
     }
@@ -1506,7 +1527,8 @@ const Zoom = {
   },
   size() { // fix the page's own width, so zooming in makes it bigger instead of squeezing it to fit
     const desk = $('.desk'), paper = $('.paper'); if (!desk || !paper) return;
-    paper.style.width = desk.clientWidth + 'px'; // the page uses the full width of the screen
+    // The page always fills the screen's width. Zoomed out, it gets wider instead of shrinking: more room on every line.
+    paper.style.width = Math.floor(desk.clientWidth / Math.min(this.z, 1)) + 'px';
     paper.style.zoom = this.z;
   },
   set(z, fx, fy, settle = true) {
@@ -2022,6 +2044,7 @@ function renderHome() {
     <header class="appbar">
       <h1>French notes</h1>
       <span class="status"></span>
+      ${FullScreen.button()}
       <button class="icon-btn" data-act="settings" aria-label="Settings">${I.gear}</button>
     </header>
     <div class="home-top">
@@ -2248,6 +2271,7 @@ function renderPage() {
       <button class="icon-btn" data-act="home" aria-label="Back to all pages">${I.back}</button>
       <h1>${esc(page.title || 'Untitled')}${mine ? '' : ` <small style="font-weight:400;color:var(--muted);font-size:1rem">· ${esc(p.name)}</small>`}</h1>
       <span class="status"></span>
+      ${FullScreen.button()}
       <button class="icon-btn" data-act="pagemenu" aria-label="Page options">${I.more}</button>
     </header>
     <nav class="toolbar" aria-label="Tools"></nav>
@@ -2482,6 +2506,7 @@ app.addEventListener('click', async ev => {
 
   switch (act) {
     case 'settings': openSettings(); break;
+    case 'fullscreen': FullScreen.toggle(); break;
     case 'home': go('#/' + (pid || S.tab || S.me || 'p1')); break;
     case 'daily-new': newDailyWord(); break;
     case 'newpage': {

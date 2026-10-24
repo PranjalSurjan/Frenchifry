@@ -91,7 +91,12 @@ Cloudflare's free plan never bills you; going over a limit would only pause savi
   **Marker** on a whiteboard, or **Off**. It's kept quiet on purpose, and follows your pen: silent when still,
   slightly louder when you write faster or press harder. It uses the tablet's media volume.
 - **Aa** in the toolbar sets the size of the printed text on the page (pronunciation boxes, corrections,
-  arrows, typed lines, title): Small, Normal, Large or Extra large. The page fills the full screen width.
+  arrows, typed lines, title): Small, Normal, Large or Extra large.
+- **The page always fills the full width of the screen**, with slim margins. Zooming out makes the page *wider*
+  instead of smaller, so each line holds more: zoom out when you want to write a long sentence on one line.
+- **Full screen**: the corner-arrows button at the top right (on the home page and in every page) hides Chrome's
+  address bar and the tablet's status and navigation bars. The same button, still at the top, turns it off again
+  (the tablet's back gesture also leaves full screen).
   - **Spelling and grammar**, for single words and whole sentences, come from LanguageTool's free checker.
     In a sentence, just the wrong words are highlighted.
   - **Meaning**: a single word is checked with English Wiktionary. A sentence is translated by a free translator

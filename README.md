@@ -127,9 +127,10 @@ Cloudflare's free plan never bills you; going over a limit would only pause savi
 - **Trash button on one of your home-page cards** deletes that page and all its lines after confirmation.
 - Your friend's pages are on their tab at the top, read only.
 - **Daily words** is a notebook page pinned first on both home pages; it can't be deleted. You write on it like any
-  page (your own thoughts, with all the pens and tools). At the top is a **shared word list**: **New word** adds a common
-  French word to it for both of you (repeats are fine) and the words stay there. Each word has 🔊 and **meaning**, which
-  opens a small card: the English, the kind of word, how it sounds, and two short example sentences with translations.
+  page (your own thoughts, with all the pens and tools). **+ Word** (first on the floating bar) adds a common French
+  word right onto the writing sheet, on the next free line with **two empty lines under it** for your notes; the words
+  are shared, so one your friend adds shows up on your page too (repeats are fine). Each word has 🔊 and **meaning**,
+  which opens a small card: the English, the kind of word, how it sounds, and two short example sentences.
 - **Backup**: in **Settings** (the gear on the home page), **Export backup** saves every page of both of you to
   one `.json` file in Downloads. **Import backup** adds back anything missing from such a file; it never
   overwrites or deletes the notes you have.

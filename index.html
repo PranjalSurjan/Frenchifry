@@ -290,17 +290,16 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .daily-thumb { background-color: #f4fbf7; }
 .daily-thumb .big { font-size: 1.5rem; line-height: 34px; margin-bottom: 2px; }
 /* the shared word list at the top of the Daily words page: one ruled line per word */
-.dw-head { height: var(--line); display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding-bottom: 8px; color: var(--muted); font-size: .85rem; }
-.dw-head .btn { height: 38px; padding: 0 18px; flex: none; }
-.dw-row { position: relative; height: var(--line); display: flex; align-items: flex-end; gap: 10px; padding-bottom: 6px; }
-.dw-n { color: var(--muted); font-size: .85rem; min-width: 2.4em; text-align: right; padding-bottom: 6px; }
+/* a Daily word sitting on its ruled line of the writing sheet */
+.dw-stamp { position: absolute; left: 0; display: flex; align-items: flex-end; gap: 8px; padding-bottom: 6px; pointer-events: none; }
+.dw-stamp button, .dw-stamp .dw-pop { pointer-events: auto; }
+.dw-stamp .icon-btn { width: 36px; height: 36px; color: var(--muted); }
+.dw-stamp .icon-btn svg { width: 18px; height: 18px; }
 .dw-word { font-family: var(--hand); font-size: calc(1.55rem * var(--fs, 1)); color: #159a6b; line-height: 1.2; }
-.dw-row .icon-btn { width: 36px; height: 36px; color: var(--muted); }
-.dw-row .icon-btn svg { width: 18px; height: 18px; }
 .dw-show { height: 32px; padding: 0 12px; border-radius: 16px; border: 1px solid var(--hair); background: var(--chrome); color: var(--muted); font-size: .8rem; font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
 .dw-show svg { width: 16px; height: 16px; }
 .dw-show[aria-expanded="true"] { background: #e7f5ee; color: #0f7a54; border-color: #9fd9bf; }
-.dw-pop { position: absolute; left: 2.6em; top: calc(100% + 4px); z-index: 6; width: min(560px, calc(100vw - 140px)); background: var(--chrome); border-radius: 16px; border: 1px solid var(--hair); box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 16px 44px 14px 18px; }
+.dw-pop { position: absolute; left: 0; top: calc(100% + 4px); z-index: 6; width: min(560px, calc(100vw - 140px)); background: var(--chrome); border-radius: 16px; border: 1px solid var(--hair); box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 16px 44px 14px 18px; }
 .dw-close { position: absolute; right: 4px; top: 4px; width: 40px; height: 40px; }
 .dw-loading { color: var(--muted); padding: 6px 0; }
 .daily-en { font-family: var(--hand); font-size: 1.8rem; color: var(--text); }
@@ -747,6 +746,7 @@ const Sheet = {
       ink.slim = 1;
       if (changed && !readonly) this.save();
     }
+    this.placeWords(); // Daily words page: put new words from the shared list on the sheet
     this.grow(); this.fit();
     if (!readonly) { // lines written before the English was kept as text: read it once, so search can find it
       let n = 0;
@@ -770,6 +770,7 @@ const Sheet = {
     let used = line + 1;
     for (const s of this.ink.strokes) used = Math.max(used, s.l + 2);
     for (const b of this.ink.breaks || []) used = Math.max(used, b + PAGE_GAP + 1);
+    for (const p of Object.values(this.ink.placed || {})) used = Math.max(used, p + 3);
     const n = Math.max(12, fill + screen + this.extra, used + screen);
     if (n > this.rows) { this.rows = n; this.el.style.height = n * this.L + 'px'; }
   },
@@ -824,7 +825,7 @@ const Sheet = {
     this.sawPen();
     if (this.readonly) return;
     if (this.cur) { e.preventDefault(); return; }
-    if (e.target.closest('.ink-box, .ink-ignore, .pbreak, .ink-tr')) return; // a pen tap on a box, a ✕ or a page gap works as a tap
+    if (e.target.closest('.ink-box, .ink-ignore, .pbreak, .ink-tr, .dw-stamp button, .dw-pop')) return; // a pen tap on a box, a ✕ or a page gap works as a tap
     this.measure();
     if (this.breakAt(Math.floor(this.pagePoint(e)[1] / this.L)) != null) return; // no writing in the gap between pages
     e.preventDefault(); e.stopPropagation();
@@ -1080,6 +1081,7 @@ const Sheet = {
     let html = (this.ink.breaks || []).map((b, k) => // the grey gap between two sheets, like Word's page view
       `<div class="pbreak" style="top:${b * L}px;height:${PAGE_GAP * L}px"><span>Page ${k + 2}</span>
         ${this.readonly ? '' : `<button data-remove-break="${b}" aria-label="Remove this page break" title="Remove page break">✕</button>`}</div>`).join('');
+    html += this.stampsHTML(); // Daily words, on the Daily words page
     for (const l of new Set(this.ink.strokes.filter(s => s.r === 'fr').map(s => s.l))) {
       const res = lines[l], busy = this.busy[l];
       if (!res && !busy) continue;
@@ -1104,7 +1106,7 @@ const Sheet = {
         </div>`;
     }
     this.marksEl.innerHTML = html;
-    const hint = this.el.querySelector('.sheet-hint'); if (hint) hint.hidden = this.ink.strokes.length > 0;
+    const hint = this.el.querySelector('.sheet-hint'); if (hint) hint.hidden = this.ink.strokes.length > 0 || Object.keys(this.ink.placed || {}).length > 0; // no hint once there's writing or a Daily word
   },
   save() {
     if (this.readonly) return;
@@ -1156,13 +1158,13 @@ const Sheet = {
   // ---- Add line: tap a line and everything from there down moves down to make room ----
   addLineAt(line) {
     const below = this.ink.strokes.filter(s => s.l >= line), breaks = this.ink.breaks || [];
-    if (!below.length && !breaks.some(b => b >= line)) { toast('There’s no writing on or below this line, so there’s already room.'); return; }
+    if (!below.length && !breaks.some(b => b >= line) && !Object.values(this.ink.placed || {}).some(p => p >= line)) { toast('There’s no writing on or below this line, so there’s already room.'); return; }
     this.shiftFrom(line, 2, breaks.map(b => b >= line ? b + 2 : b)); // two ruled lines: the word and its pronunciation box
     toast('Added a line. Undo removes it.');
   },
   shiftFrom(line, dl, nextBreaks) { // move everything written on or below a line, as one undoable step
     this.sel = new Set(this.ink.strokes.filter(s => s.l >= line).map(s => s.id));
-    this.moveSel(0, dl, nextBreaks);
+    this.moveSel(0, dl, nextBreaks, this.shiftPlaced(p => p >= line ? p + dl : p));
     this.select(null);
   },
 
@@ -1179,14 +1181,46 @@ const Sheet = {
     if (this.readonly || !(this.ink.breaks || []).includes(b)) return;
     // whatever sits below the gap moves back up into its place
     this.sel = new Set(this.ink.strokes.filter(s => s.l >= b + PAGE_GAP).map(s => s.id));
-    this.moveSel(0, -PAGE_GAP, this.ink.breaks.filter(x => x !== b).map(x => x > b ? x - PAGE_GAP : x));
+    this.moveSel(0, -PAGE_GAP, this.ink.breaks.filter(x => x !== b).map(x => x > b ? x - PAGE_GAP : x), this.shiftPlaced(p => p >= b + PAGE_GAP ? p - PAGE_GAP : p));
     this.select(null);
+  },
+
+  // ---- Daily words on the writing sheet: ink.placed = { wordId: line }. Each word sits on a ruled line with
+  // two empty lines under it for your own notes; the next word goes after that. ----
+  shiftPlaced(fn) { const out = {}; for (const [id, p] of Object.entries(this.ink.placed || {})) out[id] = fn(p); return out; },
+  nextSlot() { // the first line below everything on the page, keeping two free lines after the last word
+    let line = 0;
+    for (const p of Object.values(this.ink.placed || {})) line = Math.max(line, p + 3);
+    for (const s of this.ink.strokes) line = Math.max(line, s.l + (s.r === 'fr' ? 2 : 1) + 1); // (a French line's pronunciation box too)
+    for (const b of this.ink.breaks || []) line = Math.max(line, b + PAGE_GAP);
+    while (this.breakAt(line) != null) line++;
+    return line;
+  },
+  placeWords() { // put any words from the shared list that aren't on this page yet at the bottom, in order
+    if (this.pageId !== DAILY_ID) return [];
+    const placed = this.ink.placed = this.ink.placed || {}, added = [];
+    for (const w of normalizeDaily(S.daily).words) if (placed[w.id] == null) { placed[w.id] = this.nextSlot(); added.push(w.id); }
+    if (added.length) { this.grow(); this.save(); }
+    return added;
+  },
+  stampsHTML() {
+    if (this.pageId !== DAILY_ID) return '';
+    const L = this.L, words = new Map(normalizeDaily(S.daily).words.map(w => [w.id, w]));
+    return Object.entries(this.ink.placed || {}).map(([id, p]) => {
+      const w = words.get(id); if (!w) return '';
+      return `<div class="dw-stamp" data-dw="${id}" style="top:${p * L}px;height:${L}px">
+        <span class="dw-word" lang="fr">${esc(w.word)}</span>
+        <button class="icon-btn" data-dw-say="${id}" aria-label="Hear it">${I.speaker}</button>
+        <button class="dw-show" data-dw-show="${id}" aria-expanded="${S.dwOpen === id}">${I.eye}meaning</button>
+        ${S.dwOpen === id ? dwPopHTML(w) : ''}
+      </div>`;
+    }).join('');
   },
   // ---- Select tool: draw around writing (or tap a line to take everything from there down), then drag it ----
   setTool(t) { this.tool = t; if (t !== 'select') this.select(null); },
   pagePoint(e) { return [(e.clientX - this.rect.left) / this.z, (e.clientY - this.rect.top) / this.z]; },
   selectDown(e) {
-    if (e.target.closest('.sel-bar, .ink-box, .ink-ignore, .pbreak, .ink-tr')) return true; // let taps on those buttons through
+    if (e.target.closest('.sel-bar, .ink-box, .ink-ignore, .pbreak, .ink-tr, .dw-stamp button, .dw-pop')) return true; // let taps on those buttons through
     const onBox = e.target.closest('.sel-box');
     if (!onBox && e.pointerType !== 'pen') return true; // fingers drag a selection; anywhere else they scroll
     e.preventDefault(); e.stopPropagation();
@@ -1258,9 +1292,11 @@ const Sheet = {
     const d = this.drag; this.drag = null; this.marksEl.hidden = false;
     if (d.dx || d.dl) this.moveSel(d.dx, d.dl); else { this.redraw(); this.renderSel(); }
   },
-  moveSel(dx, dl, nextBreaks) { // nextBreaks: where the page breaks end up, when this move shifts them too
+  moveSel(dx, dl, nextBreaks, nextPlaced) { // nextBreaks / nextPlaced: where page breaks and Daily words end up, when this move shifts them too
     const sel = this.sel, ids = [...sel], before = JSON.parse(JSON.stringify(this.ink.lines));
     const breaksBefore = [...(this.ink.breaks || [])];
+    const placedBefore = { ...(this.ink.placed || {}) };
+    if (nextPlaced) this.ink.placed = nextPlaced;
     if (nextBreaks) this.ink.breaks = [...nextBreaks].sort((a, b) => a - b);
     const fr = this.ink.strokes.filter(s => s.r === 'fr');
     // a word's pronunciation travels with it when the whole word moves; a word that's split up is read again
@@ -1277,7 +1313,7 @@ const Sheet = {
       this.enDirty.add(l + dl); // check the word against the English that's now beside it
     }
     for (const s of this.ink.strokes) if (s.r === 'en' && sel.has(s.id)) { this.enDirty.add(s.l); this.enDirty.add(s.l - dl); }
-    this.record({ move: { ids, dx, dl, before, after: JSON.parse(JSON.stringify(lines)), breaksBefore, breaksAfter: [...(this.ink.breaks || [])] } });
+    this.record({ move: { ids, dx, dl, before, after: JSON.parse(JSON.stringify(lines)), breaksBefore, breaksAfter: [...(this.ink.breaks || [])], placedBefore, placedAfter: { ...(this.ink.placed || {}) } } });
     this.schedule(300); this.redraw(); this.marks(); this.save(); this.grow(); this.renderSel();
   },
   shift(ids, dx, dl) {
@@ -1311,6 +1347,7 @@ const Sheet = {
       this.shift(a.move.ids, a.move.dx * k, a.move.dl * k);
       this.ink.lines = JSON.parse(JSON.stringify(back ? a.move.before : a.move.after));
       if (a.move.breaksBefore) this.ink.breaks = [...(back ? a.move.breaksBefore : a.move.breaksAfter)];
+      if (a.move.placedBefore) this.ink.placed = { ...(back ? a.move.placedBefore : a.move.placedAfter) };
       this.redraw(); this.marks(); this.save(); this.grow(); this.renderSel();
       return;
     }
@@ -1901,10 +1938,11 @@ async function newDailyWord() { // any word from the list, repeats allowed; it s
   S.daily = normalizeDaily(S.daily);
   S.daily.words.push(item);
   S.dwOpen = null;
-  renderPageBody();
+  Sheet.placeWords(); Sheet.marks(); // it lands on the next free line, with two lines below it to write in
+  document.querySelector(`.dw-stamp[data-dw="${item.id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   saveDaily();
   item.info = await wordInfo(word);
-  if (S.dwOpen === item.id) renderPageBody();
+  if (S.dwOpen === item.id) Sheet.marks();
   await saveDaily();
 }
 
@@ -1926,20 +1964,6 @@ function dailyCard(pid) { // the pinned card (no delete button: this page can't 
       <div class="card-meta"><strong>Daily words</strong><small>Shared word list · ${n} ${n === 1 ? 'word' : 'words'}</small></div>
     </button>
   </div>`;
-}
-function dailyListHTML() { // the word list at the top of the Daily words page, newest first
-  const words = normalizeDaily(S.daily).words.slice().reverse();
-  return `<section class="dw" aria-label="Daily words">
-    <div class="dw-head"><span>Shared word list · ${words.length} ${words.length === 1 ? 'word' : 'words'}</span>
-      <button class="btn primary" data-act="daily-new">New word</button></div>
-    ${words.map((w, k) => `<div class="dw-row" data-dw="${w.id}">
-      <span class="dw-n">${words.length - k}.</span>
-      <span class="dw-word" lang="fr">${esc(w.word)}</span>
-      <button class="icon-btn" data-dw-say="${w.id}" aria-label="Hear it">${I.speaker}</button>
-      <button class="dw-show" data-dw-show="${w.id}" aria-expanded="${S.dwOpen === w.id}">${I.eye}meaning</button>
-      ${S.dwOpen === w.id ? dwPopHTML(w) : ''}
-    </div>`).join('')}
-  </section>`;
 }
 function dwPopHTML(w) { // the meaning card, over the page so the ruled lines below don't move
   const info = w.info;
@@ -2098,6 +2122,7 @@ const Palette = {
       const below = (this.pos ? this.pos.y : innerHeight) < 240;
       el.className = 'palette';
       el.innerHTML = `<span class="grip" title="Drag to move">${I.grip}</span>
+        ${S.route.pageId === DAILY_ID ? `<button class="tool labeled" data-act="daily-new" aria-label="New word" title="New word">${I.plus}Word</button><span class="sep"></span>` : ''}
         ${btn('mode-pen', S.inputMode === 'pen' && t === 'pen', I.pen, 'French pen')}
         ${btn('freepen', t === 'free', I.scribble, 'Free pen')}
         ${btn('eraser', t === 'eraser', I.eraser, 'Eraser')}
@@ -2223,7 +2248,6 @@ function renderPageBody() {
         : `<div class="page-title">${esc(page.title || 'Untitled')}</div>`}
       <div class="page-date">(${fmtDate(page.created)})</div>
     </div>
-    ${pageId === DAILY_ID ? dailyListHTML() : ''}
     ${es.map(e => rowHTML(e, mine)).join('')}
   `;
   S.justAdded = null;
@@ -2275,8 +2299,8 @@ app.addEventListener('click', async ev => {
   const dwWord = id => normalizeDaily(S.daily).words.find(w => w.id === id);
   if (t.dataset.dwSay) { const w = dwWord(t.dataset.dwSay); if (w) Voice.speak(w.word); return; }
   if (t.dataset.dwSayEx) { const [id, i] = t.dataset.dwSayEx.split('|'), w = dwWord(id); const x = w && w.info && w.info.examples[+i]; if (x) Voice.speak(x.fr); return; }
-  if (t.dataset.dwShow) { S.dwOpen = S.dwOpen === t.dataset.dwShow ? null : t.dataset.dwShow; renderPageBody(); return; }
-  if (t.dataset.dwClose) { S.dwOpen = null; renderPageBody(); return; }
+  if (t.dataset.dwShow) { S.dwOpen = S.dwOpen === t.dataset.dwShow ? null : t.dataset.dwShow; Sheet.marks(); return; }
+  if (t.dataset.dwClose) { S.dwOpen = null; Sheet.marks(); return; }
   if (t.dataset.ink) { setInk(t.dataset.ink); return; }
   const row = t.closest('.row');
   if (t.dataset.removeBreak !== undefined) { Sheet.removeBreak(+t.dataset.removeBreak); return; }

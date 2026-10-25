@@ -8,6 +8,7 @@ English-style pronunciation (from Wiktionary) that you can tap to hear in a Fren
 
 - `index.html` – the app
 - `pron.js` – sound spellings (Wiktionary lookup, plus a spelling-rule guess when a word isn't found)
+- `words.js` – the 5000 French words that **+ Word** picks from (every kind of word, from Lexique 3.83, www.lexique.org, CC BY-SA 4.0)
 - `functions/api/data.js` – saves notes so both tablets stay in sync (Cloudflare Pages + D1)
 - `functions/api/handwriting.js` – sends S Pen strokes to Google's free handwriting reader (Cloudflare)
 - `api/data.js`, `api/handwriting.js` – the same two for Vercel (kept as the backup)
@@ -136,8 +137,8 @@ Cloudflare's free plan never bills you; going over a limit would only pause savi
 - **Trash button on one of your home-page cards** deletes that page and all its lines after confirmation.
 - Your friend's pages are on their tab at the top, read only.
 - **Daily words** is a notebook page pinned first on each home page; it can't be deleted. You write on it like any
-  page (your own thoughts, with all the pens and tools). **+ Word** (first on the floating bar) adds a common French
-  word right onto the writing sheet, on the next free line with **two empty lines under it** for your notes. Each of you
+  page (your own thoughts, with all the pens and tools). **+ Word** (first on the floating bar) adds one of 5000 common French
+  words (nouns, verbs, adjectives, adverbs, little words like *pourtant* or *chez*), preferring one you don't have yet, right onto the writing sheet, on the next free line with **two empty lines under it** for your notes. Each of you
   has **your own word list**: a word you add shows up only on your page, not your friend's (repeats are fine). Each word has 🔊 and **meaning**,
   which opens a small card: the English, the kind of word, how it sounds, and two short example sentences.
 - **Backup**: in **Settings** (the gear on the home page), **Export backup** saves every page of both of you to

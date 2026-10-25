@@ -396,6 +396,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 <body>
 <div id="app"></div>
 <script src="pron.js"></script>
+<script src="words.js"></script>
 <script>
 'use strict';
 
@@ -1907,26 +1908,7 @@ function render() {
 // ---------- Daily words: a page in each notebook, always first on the home page, never deleted ----------
 // "New word" picks a common French word for your page only: each of you has your own list. Its meaning stays hidden
 // until you tap "Show meaning": the English, the kind of word, how it sounds, and two short example sentences.
-const DAILY_WORDS = (
-  'maison famille ami amie travail école livre voiture ville pays monde temps jour nuit matin soir semaine mois année ' +
-  'heure moment fois vie enfant homme femme fille garçon père mère frère sœur chien chat eau pain café thé vin lait ' +
-  'fromage pomme fruit légume viande poisson repas cuisine chambre porte fenêtre table chaise lit rue route gare ' +
-  'magasin marché argent prix question réponse idée problème raison chose mot langue histoire musique film photo ' +
-  'voyage vacances plage mer montagne forêt soleil pluie neige vent ciel arbre fleur jardin couleur cœur tête main ' +
-  'pied œil bouche santé médecin hôpital travailleur bureau réunion projet ordinateur téléphone message lettre journal ' +
-  'nouvelle début fin chemin endroit côté milieu fête cadeau anniversaire souvenir rêve peur joie colère espoir ' +
-  'être avoir aller faire dire pouvoir vouloir savoir voir venir devoir prendre trouver donner parler aimer passer ' +
-  'mettre croire penser regarder chercher attendre comprendre connaître rester entendre demander répondre sentir ' +
-  'vivre partir sortir arriver entrer tomber porter ouvrir fermer commencer finir essayer oublier apprendre écrire ' +
-  'lire manger boire dormir marcher courir jouer chanter danser acheter vendre payer choisir changer aider montrer ' +
-  'rencontrer appeler habiter travailler étudier voyager nager cuisiner laver gagner perdre rire pleurer sourire ' +
-  'grand petit bon mauvais beau joli nouveau vieux jeune long court chaud froid facile difficile heureux triste ' +
-  'content fatigué malade riche pauvre propre sale rapide lent fort faible doux dur plein vide cher gratuit ' +
-  'important possible prêt sûr vrai faux simple calme drôle gentil méchant poli timide fier libre seul ' +
-  'souvent toujours jamais parfois déjà encore bientôt hier demain aujourd’hui maintenant ensuite tard tôt ' +
-  'ici là loin près dedans dehors beaucoup peu assez trop très vite bien mal ensemble surtout presque vraiment ' +
-  'pourtant cependant donc alors parce que pendant depuis avant après chez avec sans sous contre vers'
-).split(/\s+/).filter(w => w && w !== 'que' && w !== 'parce'); // ("parce que" is two words; skip it)
+// The word list itself (5000 common words of every kind) is in words.js.
 
 async function wordInfo(word) { // { pos, en, sound, ipa, examples: [{ fr, en }] }, kept short
   const info = { pos: '', en: '', sound: '', ipa: '', examples: [] };
@@ -2000,8 +1982,10 @@ async function saveDaily() { // merge with what your other device saved first, s
   }
   await Store.putShared(key, S.daily[S.me]);
 }
-async function newDailyWord() { // any word from the list, repeats allowed; it shows at once, its meaning a moment later
-  const word = DAILY_WORDS[Math.floor(Math.random() * DAILY_WORDS.length)];
+async function newDailyWord() { // a random word, preferably one not on your list yet; it shows at once, its meaning a moment later
+  const have = new Set(dailyOf(S.me).words.map(w => w.word));
+  let word;
+  for (let i = 0; i < 30 && (!word || have.has(word)); i++) word = DAILY_WORDS[Math.floor(Math.random() * DAILY_WORDS.length)];
   const item = { id: uid(), word, info: null, at: Date.now(), by: S.me };
   S.daily = S.daily || {};
   S.daily[S.me] = dailyOf(S.me);
